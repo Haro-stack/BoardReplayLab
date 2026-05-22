@@ -1,9 +1,12 @@
 import assertModule from "assert";
 
 import {
+  DINOBOARD_MODULE_MASK_BITS,
+  buildExpansionPublicSnapshot,
   buildPublicSnapshot,
   convertDinoBoardReplayToGemTable,
   convertGemTableReplayToDinoBoard,
+  convertGemTableReplayToDinoBoardV2,
   decodeDinoAction,
   encodeGemTableMoveAction,
   gemTableCardToDinoId
@@ -133,6 +136,114 @@ test("converts Gem Table replay to DinoBoard observation wire data", () => {
   assert.equal(converted.initial_observation.public_snapshot.__viz__.reserved.length, 6);
   assert.equal(converted.observations[0].action_id, 0);
   assert.ok(converted.observations[0].events.some((event) => event.kind === "deck_flip"));
+});
+
+test("v2 public snapshots preserve the existing base v1 sparse snapshot", () => {
+  const baseState = state();
+  const v1 = buildPublicSnapshot(baseState, 1);
+  const v2 = buildExpansionPublicSnapshot(baseState, 1);
+
+  assert.equal(v2.schema, "dinoboard-splendor-public-snapshot-v2");
+  assert.equal(v2.base_wire_schema, "dinoboard-splendor2p-wire-v1");
+  assert.equal(v2.module_mask, DINOBOARD_MODULE_MASK_BITS.base);
+  assert.deepEqual(v2.base_v1_public_snapshot, v1);
+
+  const baseSlot = v2.market_slots.find((slot) => slot.slot_id === "base:t1:s0");
+  assert.equal(baseSlot.area, "base");
+  assert.equal(baseSlot.card.dinoboard_catalog_id, 0);
+  assert.deepEqual(baseSlot.legal_actions.map((action) => action.legacy_action_id), [0, 12]);
+});
+
+test("v2 public snapshots represent Orient slots without fake ability actions", () => {
+  const orientCard = {
+    id: "bga-201",
+    bga_id: "201",
+    tier: 1,
+    color: "blue",
+    points: 0,
+    cost: { white: 2, blue: 0, green: 0, red: 0, black: 0 },
+    slot: {
+      area: "orient",
+      expansion: "Orient",
+      tier: 1,
+      index: 0,
+      slot_id: "orient:t1:s0",
+      card_id: "201",
+      legacy_args: null
+    },
+    ability: {
+      expansion: "Orient",
+      code: "reserve_noble",
+      label: "reserve_noble",
+      text: "Reserve an available noble tile.",
+      support_status: "metadata_only",
+      unsupported_reason: { code: "gemtable.orient.ability_metadata_only", label: "Orient" }
+    }
+  };
+  const expansionState = {
+    schema: "zephyrlabs-gemtable-bga-v2",
+    base_schema: "zephyrlabs-gemtable-bga-v1",
+    base_state: state(),
+    expansion_status: {
+      active: ["Orient"],
+      live_import_supported: false,
+      unsupported_reasons: [{ code: "bga.orient.live_import_unsupported", label: "Orient" }]
+    },
+    market_areas: {
+      base: {
+        id: "base",
+        expansion: null,
+        tiers: { 1: [blueStarter], 2: [], 3: [] }
+      },
+      orient: {
+        id: "orient",
+        expansion: "Orient",
+        tiers: { 1: [orientCard], 2: [], 3: [] }
+      }
+    }
+  };
+
+  const snapshot = buildExpansionPublicSnapshot(expansionState, 1);
+  assert.equal(snapshot.module_mask, DINOBOARD_MODULE_MASK_BITS.base | DINOBOARD_MODULE_MASK_BITS.orient);
+  assert.deepEqual(snapshot.active_modules, ["base", "orient"]);
+
+  const orientSlot = snapshot.market_slots.find((slot) => slot.slot_id === "orient:t1:s0");
+  assert.equal(orientSlot.area, "orient");
+  assert.equal(orientSlot.expansion, "Orient");
+  assert.equal(orientSlot.card.ability.code, "reserve_noble");
+  assert.deepEqual(orientSlot.legal_actions.map((action) => action.kind), ["buy", "reserve"]);
+  assert.ok(orientSlot.legal_actions.every((action) => action.status === "pending_engine_support"));
+  assert.ok(orientSlot.legal_actions.every((action) => action.executable === false));
+  assert.ok(orientSlot.legal_actions.every((action) => action.legacy_action_id === null));
+  assert.equal(snapshot.legal_actions.some((action) => action.kind === "card_ability"), false);
+  assert.equal(snapshot.pending[0].kind, "card_ability");
+  assert.equal(snapshot.pending[0].status, "metadata_only");
+});
+
+test("converts Gem Table replay to the v2 expansion-ready wire contract", () => {
+  const before = state();
+  const after = state({
+    next_move_id: 2,
+    current: 1,
+    players: [player(0, { tokens: { white: 1, blue: 1, green: 1, red: 0, black: 0, gold: 0 } }), player(1)]
+  });
+  const replay = {
+    schema: "zephyrlabs-gemtable-bga-v1",
+    gamedatas: { schema: "zephyrlabs-gemtable-bga-v1", source_state: before },
+    moves: [{
+      move_id: 1,
+      type: "takeTokens",
+      player_id: "0",
+      args: { colors: { white: 1, blue: 1, green: 1 } },
+      state_after: { schema: "zephyrlabs-gemtable-bga-v1", source_state: after }
+    }]
+  };
+
+  const converted = convertGemTableReplayToDinoBoardV2(replay, { aiSeat: 1 });
+  assert.equal(converted.schema, "dinoboard-splendor-wire-v2");
+  assert.equal(converted.initial_observation.public_snapshot.base_wire_schema, "dinoboard-splendor2p-wire-v1");
+  assert.equal(converted.observations[0].action_id, 30);
+  assert.equal(converted.observations[0].action.status, "base_v1_candidate");
 });
 
 test("rejects DinoBoard action-history-only conversion", () => {

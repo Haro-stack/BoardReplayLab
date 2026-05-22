@@ -275,6 +275,86 @@ Field conventions:
 - `__viz__` marks which sparse fields are visible to the selected AI seat.
 - Opponent blind reserves are masked unless a replay event reveals them.
 
+### DinoBoard Splendor Expansion Wire v2
+
+Expansion preparation is exposed separately from the base 2P bridge as
+`dinoboard-splendor-wire-v2` and `dinoboard-splendor-public-snapshot-v2`.
+The v1 `convertGemTableReplayToDinoBoard` output is unchanged; v2 helpers
+embed the base v1 public snapshot when a base Gem Table state is available and
+add module-aware market slot metadata for training fixtures.
+
+```json
+{
+  "schema": "dinoboard-splendor-public-snapshot-v2",
+  "base_wire_schema": "dinoboard-splendor2p-wire-v1",
+  "source_schema": "zephyrlabs-gemtable-bga-v2",
+  "module_mask": 3,
+  "active_modules": ["base", "orient"],
+  "module_bits": {
+    "base": 1,
+    "orient": 2,
+    "cities": 4,
+    "trading": 8,
+    "strongholds": 16,
+    "silk_road": 32
+  },
+  "base_v1_public_snapshot": {},
+  "market_slots": [
+    {
+      "slot_id": "orient:t1:s0",
+      "area": "orient",
+      "expansion": "Orient",
+      "tier": 1,
+      "index": 0,
+      "card": {
+        "id": "bga-201",
+        "source_card_id": "201",
+        "dinoboard_catalog_id": null,
+        "ability": {
+          "expansion": "Orient",
+          "code": "reserve_noble",
+          "support_status": "metadata_only"
+        }
+      },
+      "legal_actions": [
+        {
+          "id": "buy:orient:t1:s0",
+          "kind": "buy",
+          "type": "buy_market_slot",
+          "status": "pending_engine_support",
+          "executable": false,
+          "legacy_action_id": null
+        },
+        {
+          "id": "reserve:orient:t1:s0",
+          "kind": "reserve",
+          "type": "reserve_market_slot",
+          "status": "pending_engine_support",
+          "executable": false,
+          "legacy_action_id": null
+        }
+      ],
+      "pending": [
+        {
+          "kind": "card_ability",
+          "ability_code": "reserve_noble",
+          "status": "metadata_only"
+        }
+      ]
+    }
+  ],
+  "legal_actions": [],
+  "pending": []
+}
+```
+
+Base slots use stable ids such as `base:t1:s0`, keep legacy tier/index args,
+and carry base v1 action ids when they still fit the `0..23` buy/reserve
+ranges. Orient slots use the same `area:tier:slot` identity contract but are
+marked `pending_engine_support` until an expansion engine can execute them.
+Orient card abilities stay in `card.ability` and `pending` metadata; they are
+not emitted as fake executable legal actions.
+
 Action id ranges:
 
 | Range | Meaning |
