@@ -7,9 +7,7 @@
   "scripts": {
     "crawl:splendor": "node scripts/bga-splendor-replay-crawler.mjs",
     "convert:splendor": "node scripts/convert-splendor-capture.mjs",
-    "convert:dinoboard": "node scripts/convert-dinoboard-splendor.mjs",
-    "test": "node test/dinoboard-splendor2p-bridge.test.mjs",
-    "check": "node --check scripts/bga-splendor-replay-crawler.mjs && node --check scripts/convert-splendor-capture.mjs && node --check scripts/convert-dinoboard-splendor.mjs && node test/dinoboard-splendor2p-bridge.test.mjs"
+    "check": "node --check scripts/bga-splendor-replay-crawler.mjs && node --check scripts/convert-splendor-capture.mjs"
   },
   "dependencies": {
     "playwright": "1.44.0"
