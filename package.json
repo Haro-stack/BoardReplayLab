@@ -1,0 +1,15 @@
+{
+  "name": "board-replay-lab",
+  "version": "0.1.0",
+  "type": "module",
+  "private": false,
+  "description": "Local BGA replay capture and conversion tools for ZephyrLabs Gem Table experiments.",
+  "scripts": {
+    "crawl:splendor": "node scripts/bga-splendor-replay-crawler.mjs",
+    "convert:splendor": "node scripts/convert-splendor-capture.mjs",
+    "check": "node --check scripts/bga-splendor-replay-crawler.mjs && node --check scripts/convert-splendor-capture.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.44.0"
+  }
+}

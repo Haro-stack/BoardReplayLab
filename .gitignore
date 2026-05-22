@@ -1,0 +1,8 @@
+node_modules/
+bga-replays/
+gemtable-replays/
+.bga-crawler-profile/
+.bga-cookie-header
+.env
+*.log
+.codex-*
