@@ -56,6 +56,146 @@ function normalizeCost(cost) {
   return normalized;
 }
 
+const SOURCE_CARD_ROWS = {
+  black: [
+    [0, 0, 1, 1, 1, 1],
+    [0, 0, 0, 1, 0, 2],
+    [0, 0, 2, 0, 0, 2],
+    [0, 1, 0, 3, 0, 1],
+    [0, 0, 0, 0, 0, 3],
+    [0, 0, 1, 1, 2, 1],
+    [0, 0, 2, 1, 2, 0],
+    [1, 0, 0, 0, 4, 0],
+    [1, 0, 3, 0, 2, 2],
+    [1, 2, 3, 0, 0, 3],
+    [2, 0, 0, 2, 1, 4],
+    [2, 0, 5, 0, 0, 0],
+    [2, 0, 0, 3, 0, 5],
+    [3, 6, 0, 0, 0, 0],
+    [3, 0, 3, 3, 3, 5],
+    [4, 0, 0, 7, 0, 0],
+    [4, 3, 0, 6, 0, 3],
+    [5, 3, 0, 7, 0, 0]
+  ],
+  blue: [
+    [0, 2, 1, 0, 0, 0],
+    [0, 1, 1, 2, 0, 1],
+    [0, 1, 1, 1, 0, 1],
+    [0, 0, 0, 1, 1, 3],
+    [0, 3, 0, 0, 0, 0],
+    [0, 0, 1, 2, 0, 2],
+    [0, 2, 0, 0, 0, 2],
+    [1, 0, 0, 4, 0, 0],
+    [1, 0, 0, 3, 2, 2],
+    [1, 3, 0, 0, 2, 3],
+    [2, 0, 5, 0, 3, 0],
+    [2, 0, 0, 0, 5, 0],
+    [2, 4, 2, 1, 0, 0],
+    [3, 0, 0, 0, 6, 0],
+    [3, 5, 3, 3, 0, 3],
+    [4, 0, 7, 0, 0, 0],
+    [4, 3, 6, 0, 3, 0],
+    [5, 0, 7, 0, 3, 0]
+  ],
+  green: [
+    [0, 0, 2, 0, 1, 0],
+    [0, 0, 0, 2, 2, 0],
+    [0, 0, 1, 0, 3, 1],
+    [0, 1, 1, 1, 1, 0],
+    [0, 2, 1, 1, 1, 0],
+    [0, 2, 0, 2, 1, 0],
+    [0, 0, 0, 3, 0, 0],
+    [1, 4, 0, 0, 0, 0],
+    [1, 0, 3, 3, 0, 2],
+    [1, 2, 2, 0, 3, 0],
+    [2, 1, 4, 0, 2, 0],
+    [2, 0, 0, 0, 0, 5],
+    [2, 0, 0, 0, 5, 3],
+    [3, 0, 0, 0, 0, 6],
+    [3, 3, 5, 3, 3, 0],
+    [4, 0, 3, 0, 6, 3],
+    [4, 0, 0, 0, 7, 0],
+    [5, 0, 0, 0, 7, 3]
+  ],
+  red: [
+    [0, 0, 3, 0, 0, 0],
+    [0, 3, 1, 1, 0, 0],
+    [0, 0, 0, 0, 2, 1],
+    [0, 2, 2, 0, 0, 1],
+    [0, 1, 2, 0, 1, 1],
+    [0, 1, 1, 0, 1, 1],
+    [0, 0, 2, 2, 0, 0],
+    [1, 0, 4, 0, 0, 0],
+    [1, 3, 0, 2, 3, 0],
+    [1, 3, 2, 2, 0, 0],
+    [2, 0, 1, 0, 4, 2],
+    [2, 5, 3, 0, 0, 0],
+    [2, 5, 0, 0, 0, 0],
+    [3, 0, 0, 6, 0, 0],
+    [3, 3, 3, 0, 5, 3],
+    [4, 0, 0, 0, 0, 7],
+    [4, 0, 0, 3, 3, 6],
+    [5, 0, 0, 3, 0, 7]
+  ],
+  white: [
+    [0, 1, 0, 0, 2, 2],
+    [0, 1, 0, 2, 0, 0],
+    [0, 1, 0, 1, 1, 1],
+    [0, 0, 0, 0, 3, 0],
+    [0, 0, 0, 0, 2, 2],
+    [0, 1, 0, 1, 1, 2],
+    [0, 1, 3, 0, 1, 0],
+    [1, 0, 0, 0, 0, 4],
+    [1, 2, 0, 2, 0, 3],
+    [1, 0, 2, 3, 3, 0],
+    [2, 2, 0, 4, 0, 1],
+    [2, 0, 0, 5, 0, 0],
+    [2, 3, 0, 5, 0, 0],
+    [3, 0, 6, 0, 0, 0],
+    [3, 3, 0, 5, 3, 3],
+    [4, 7, 0, 0, 0, 0],
+    [4, 6, 3, 3, 0, 0],
+    [5, 7, 3, 0, 0, 0]
+  ]
+};
+
+function sourceRowTier(index) {
+  if (index < 8) return 1;
+  if (index < 14) return 2;
+  return 3;
+}
+
+function sourceRowCost(row) {
+  return normalizeCost({
+    black: row[1],
+    white: row[2],
+    red: row[3],
+    blue: row[4],
+    green: row[5]
+  });
+}
+
+function buildDevelopmentCards() {
+  const cardsByTier = { 1: [], 2: [], 3: [] };
+  const counters = { 1: 0, 2: 0, 3: 0 };
+  ["black", "blue", "green", "red", "white"].forEach((color) => {
+    SOURCE_CARD_ROWS[color].forEach((row, index) => {
+      const tier = sourceRowTier(index);
+      counters[tier] += 1;
+      cardsByTier[tier].push({
+        id: `t${tier}-${String(counters[tier]).padStart(2, "0")}`,
+        tier,
+        color,
+        points: row[0],
+        cost: sourceRowCost(row)
+      });
+    });
+  });
+  return cardsByTier;
+}
+
+const DEVELOPMENT_CARDS = buildDevelopmentCards();
+
 function tokenCountForPlayers(playerCount) {
   if (playerCount === 2) return 4;
   if (playerCount === 3) return 5;
@@ -154,6 +294,15 @@ function extractBgaReplayData(payload) {
   return null;
 }
 
+function extractBgaInitialGamedatas(payload) {
+  const snapshots = payload && Array.isArray(payload.snapshots) ? payload.snapshots : [];
+  for (const snapshot of snapshots) {
+    const gamedatas = snapshot && snapshot.gameui && snapshot.gameui.gamedatas;
+    if (gamedatas && gamedatas.market && gamedatas.carddb) return gamedatas;
+  }
+  return null;
+}
+
 function expansionLabelFor(value) {
   const text = String(value || "");
   const patterns = [
@@ -212,6 +361,73 @@ function bgaGemColor(code) {
   }[String(code || "").trim().toUpperCase()] || "";
 }
 
+function bgaCardTypeColor(type) {
+  return ["white", "blue", "green", "red", "black"][Number(type)] || "";
+}
+
+function bgaRawCardTypeId(card, fallback) {
+  if (card && card.type !== undefined && card.type !== null && card.type !== "") return card.type;
+  if (card && card.id !== undefined && card.id !== null && card.id !== "") return card.id;
+  return fallback !== undefined && fallback !== null ? fallback : "";
+}
+
+function bgaCostToCounts(value) {
+  const counts = emptyCounts(false);
+  if (!value) return counts;
+  if (typeof value === "string") {
+    value.split("").forEach((code) => {
+      const color = bgaGemColor(code);
+      if (COLORS.includes(color)) counts[color] += 1;
+    });
+    return counts;
+  }
+  if (typeof value === "object") {
+    Object.keys(value).forEach((code) => {
+      const color = bgaGemColor(code) || (COLORS.includes(code) ? code : "");
+      if (COLORS.includes(color)) counts[color] += Math.max(0, Number(value[code]) || 0);
+    });
+  }
+  return counts;
+}
+
+function bgaPoolToBank(pool) {
+  const bank = emptyCounts(true);
+  Object.keys(pool || {}).forEach((code) => {
+    const color = bgaGemColor(code) || (ALL_TOKENS.includes(code) ? code : "");
+    if (ALL_TOKENS.includes(color)) bank[color] = Math.max(0, Number(pool[code]) || 0);
+  });
+  return bank;
+}
+
+function bgaObjectValues(value) {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== "object") return [];
+  return Object.keys(value).map((key) => value[key]);
+}
+
+function bgaCostMatchesLocal(a, b) {
+  return COLORS.every((color) => (Number(a && a[color]) || 0) === (Number(b && b[color]) || 0));
+}
+
+function bgaLocalCardMatch(tier, color, points, cost) {
+  const cards = DEVELOPMENT_CARDS[Math.max(1, Math.min(3, Number(tier) || 1))] || [];
+  return cards.find((card) =>
+    card.color === color &&
+    Number(card.points) === Number(points || 0) &&
+    bgaCostMatchesLocal(card.cost, cost)
+  );
+}
+
+function bgaWithLocalCardId(card) {
+  const local = bgaLocalCardMatch(card.tier, card.color, card.points, card.cost);
+  if (!local) return card;
+  const mapped = clone(local);
+  mapped.bga_id = card.bga_id;
+  mapped.bga_card_id = card.id;
+  mapped.bga_original_id = card.bga_id;
+  return mapped;
+}
+
 function bgaTierFromCard(card, args) {
   const location = String(card && card.location || "");
   const match = location.match(/(?:market|draw)_(\d+)/);
@@ -224,7 +440,7 @@ function bgaTierFromCard(card, args) {
 }
 
 function bgaCardId(card, fallback) {
-  const raw = card && (card.type || card.id) || fallback;
+  const raw = bgaRawCardTypeId(card, fallback);
   return `bga-${String(raw || "unknown")}`;
 }
 
@@ -251,21 +467,41 @@ function bgaTokenListFromCounts(counts) {
   return colors;
 }
 
-function bgaCardFromNotification(item, groupItems, fallback) {
+function bgaCardFromDb(raw, gamedatas, fallback) {
+  const id = String(raw || fallback && fallback.id || "unknown");
+  const db = gamedatas && gamedatas.carddb && gamedatas.carddb[id];
+  let tier = Math.max(1, Math.min(3, Number(fallback && fallback.tier) || 1));
+  let color = fallback && fallback.color || "gold";
+  let points = Math.max(0, Number(fallback && fallback.points) || 0);
+  let cost = normalizeCost({});
+  if (db) {
+    tier = Math.max(1, Math.min(3, Number(db.lvl) || tier));
+    color = bgaCardTypeColor(db.type) || color;
+    points = Math.max(0, Number(db.points) || 0);
+    cost = bgaCostToCounts(db.cost);
+  }
+  return bgaWithLocalCardId({
+    id: `bga-${id}`,
+    bga_id: id,
+    tier,
+    color,
+    points,
+    cost
+  });
+}
+
+function bgaCardFromNotification(item, groupItems, fallback, gamedatas) {
   const args = item && item.args || {};
   const card = args.card || fallback && fallback.card || {};
   const scoreItem = groupItems.find((entry) =>
     entry && entry.type === "updateScore" && String(entry.args && entry.args.player_id) === String(args.player_id || fallback && fallback.player_id)
   );
-  const color = bgaGemColor(args.gem_type) || fallback && fallback.color || "gold";
-  return {
-    id: bgaCardId(card, fallback && fallback.id),
-    bga_id: String(card.type || card.id || fallback && fallback.id || ""),
+  const raw = bgaRawCardTypeId(card, fallback && fallback.id);
+  return bgaCardFromDb(raw, gamedatas, {
     tier: bgaTierFromCard(card, args),
-    color,
-    points: Math.max(0, Number(scoreItem && scoreItem.args && scoreItem.args.amount_vp) || 0),
-    cost: normalizeCost({})
-  };
+    color: bgaGemColor(args.gem_type) || fallback && fallback.color || "gold",
+    points: Math.max(0, Number(scoreItem && scoreItem.args && scoreItem.args.amount_vp) || 0)
+  });
 }
 
 function applyBgaCoinGaps(game, player, items) {
@@ -282,11 +518,18 @@ function applyBgaCoinGaps(game, player, items) {
   });
 }
 
-function buildBgaPlayerList(data) {
+function buildBgaPlayerList(data, gamedatas) {
   const players = Array.isArray(data && data.players) ? data.players.slice(0, 4) : [];
   const byId = {};
   players.forEach((player) => {
     byId[String(player.id)] = true;
+  });
+  const gdPlayers = gamedatas && gamedatas.players && typeof gamedatas.players === "object" ? gamedatas.players : {};
+  bgaObjectValues(gdPlayers).forEach((player) => {
+    const id = player && (player.id || player.player_id);
+    if (!id || byId[String(id)]) return;
+    byId[String(id)] = true;
+    players.push({ id, name: player.name || `BGA Player ${players.length + 1}` });
   });
   (data && data.logs || []).forEach((packet) => {
     (packet.data || []).forEach((entry) => {
@@ -298,6 +541,100 @@ function buildBgaPlayerList(data) {
     });
   });
   return players.slice(0, 4);
+}
+
+function bgaDeckPlaceholders(tier, count) {
+  const cards = [];
+  for (let index = 0; index < Math.max(0, Number(count) || 0); index += 1) {
+    cards.push({
+      id: `bga-hidden-t${tier}-${index}`,
+      bga_id: "",
+      tier,
+      color: "gold",
+      points: 0,
+      cost: normalizeCost({}),
+      hidden: true
+    });
+  }
+  return cards;
+}
+
+function bgaNobleFromDb(raw, gamedatas, fallback) {
+  const id = String(raw || fallback && fallback.id || "unknown");
+  const db = gamedatas && gamedatas.nobledb && gamedatas.nobledb[id];
+  return {
+    id: `bga-noble-${id}`,
+    bga_id: id,
+    name: String(db && db.name || fallback && fallback.name || "BGA noble"),
+    points: Math.max(0, Number(db && db.points || fallback && fallback.points || 3) || 3),
+    req: bgaCostToCounts(db && db.cost || fallback && fallback.req)
+  };
+}
+
+function applyBgaInitialGamedatas(game, gamedatas) {
+  if (!gamedatas || !gamedatas.market || !gamedatas.carddb) return false;
+  const market = gamedatas.market || {};
+  if (market.pool) game.bank = bgaPoolToBank(market.pool);
+  [1, 2, 3].forEach((tier) => {
+    const row = market[`row_${tier}`] || {};
+    game.market[tier] = bgaObjectValues(row.cards)
+      .map((entry) => bgaCardFromDb(bgaRawCardTypeId(entry, entry && entry.type), gamedatas, { tier }))
+      .filter((card) => card && card.bga_id && card.bga_id !== "unknown");
+    game.decks[tier] = bgaDeckPlaceholders(tier, Number(row.count) || 0);
+  });
+  game.nobles = bgaObjectValues(market.nobles)
+    .map((entry) => bgaNobleFromDb(bgaRawCardTypeId(entry, entry && entry.type), gamedatas, {}))
+    .filter((noble) => noble && noble.bga_id && noble.bga_id !== "unknown");
+  const activePlayer = gamedatas.gamestate && gamedatas.gamestate.active_player;
+  if (activePlayer !== undefined && activePlayer !== null) {
+    const activeIndex = game.players.findIndex((player) => String(player.bga_id || "") === String(activePlayer));
+    if (activeIndex >= 0) game.current = activeIndex;
+  }
+  game.round = Math.max(1, Number(gamedatas.roundnumber) || game.round || 1);
+  return true;
+}
+
+function decrementBgaDeck(game, tier) {
+  if (game.decks[tier] && game.decks[tier].length) game.decks[tier].pop();
+}
+
+function removeBgaMarketCard(game, card) {
+  const tier = Math.max(1, Math.min(3, Number(card && card.tier) || 1));
+  const cards = game.market[tier] || [];
+  const index = cards.findIndex((entry) =>
+    entry && card && ((entry.bga_id && entry.bga_id === card.bga_id) || entry.id === card.id)
+  );
+  if (index >= 0) {
+    cards[index] = null;
+    return { tier, index };
+  }
+  return null;
+}
+
+function revealBgaMarketCard(game, items, tier, gamedatas, slot) {
+  const reveal = (items || []).find((entry) => entry && entry.type === "revealCard" && entry.args && entry.args.card);
+  if (!reveal) {
+    if (slot && game.market[slot.tier] && !game.market[slot.tier][slot.index]) game.market[slot.tier].splice(slot.index, 1);
+    return null;
+  }
+  const revealCard = bgaCardFromNotification(reveal, items || [], { tier }, gamedatas);
+  if (!revealCard || !revealCard.bga_id || revealCard.bga_id === "unknown") {
+    if (slot && game.market[slot.tier] && !game.market[slot.tier][slot.index]) game.market[slot.tier].splice(slot.index, 1);
+    return null;
+  }
+  const targetTier = Math.max(1, Math.min(3, Number(revealCard.tier || tier) || 1));
+  const exists = (game.market[targetTier] || []).some((entry) => entry && entry.bga_id === revealCard.bga_id);
+  if (!exists) {
+    if (slot && slot.tier === targetTier && Number.isInteger(slot.index) && game.market[targetTier]) {
+      game.market[targetTier][slot.index] = revealCard;
+    } else {
+      const emptyIndex = (game.market[targetTier] || []).findIndex((entry) => !entry);
+      if (emptyIndex >= 0) game.market[targetTier][emptyIndex] = revealCard;
+      else game.market[targetTier].push(revealCard);
+    }
+  }
+  decrementBgaDeck(game, targetTier);
+  return revealCard;
 }
 
 function groupBgaPacketsByMove(logs) {
@@ -351,7 +688,7 @@ function createGameFromBgaPlayers(tableId, bgaPlayers) {
   return game;
 }
 
-function applyBgaMoveGroup(game, group, playerLookup) {
+function applyBgaMoveGroup(game, group, playerLookup, gamedatas) {
   const items = group.items || [];
   const publicReserve = items.find((entry) => entry.type === "reserveCard" && (entry.log || entry.args && entry.args.player_name));
   const privateReserve = items.find((entry) => entry.type === "reserveCard" && entry.args && entry.args.card);
@@ -370,7 +707,7 @@ function applyBgaMoveGroup(game, group, playerLookup) {
   applyBgaCoinGaps(game, player, coins);
 
   if (buy) {
-    const buyCard = bgaCardFromNotification(buy, items, { player_id: externalId });
+    const buyCard = bgaCardFromNotification(buy, items, { player_id: externalId }, gamedatas);
     const fromHand = /hand/i.test(String(buy.args && buy.args.card && buy.args.card.location || ""));
     if (fromHand) {
       const reservedIndex = player.reserved.findIndex((card) =>
@@ -382,6 +719,9 @@ function applyBgaMoveGroup(game, group, playerLookup) {
       } else {
         buyCard.reserved_from = "deck";
       }
+    } else {
+      const buySlot = removeBgaMarketCard(game, buyCard);
+      revealBgaMarketCard(game, items, buyCard.tier, gamedatas, buySlot);
     }
     if (COLORS.includes(buyCard.color)) player.bonuses[buyCard.color] += 1;
     player.purchased.push(buyCard);
@@ -402,10 +742,16 @@ function applyBgaMoveGroup(game, group, playerLookup) {
     const reserveItem = publicReserve || privateReserve;
     const cardSource = privateReserve && privateReserve.args && privateReserve.args.card || reserveItem.args && reserveItem.args.card || {};
     const fromDeck = /^draw_/i.test(String(cardSource.location || "")) || !!(reserveItem.args && reserveItem.args.drawpile);
-    const reserveCard = bgaCardFromNotification(reserveItem, items, { card: cardSource, id: cardSource.type || cardSource.id, player_id: externalId });
+    const reserveCard = bgaCardFromNotification(reserveItem, items, { card: cardSource, id: bgaRawCardTypeId(cardSource, ""), player_id: externalId }, gamedatas);
     reserveCard.reserved_from = fromDeck ? "deck" : "market";
     reserveCard.reserved_public = !fromDeck;
     if (player.reserved.length < 3) player.reserved.push(reserveCard);
+    if (fromDeck) {
+      decrementBgaDeck(game, reserveCard.tier);
+    } else {
+      const reserveSlot = removeBgaMarketCard(game, reserveCard);
+      revealBgaMarketCard(game, items, reserveCard.tier, gamedatas, reserveSlot);
+    }
     return {
       type: fromDeck ? "reserveDeck" : "reserveMarket",
       player,
@@ -419,12 +765,12 @@ function applyBgaMoveGroup(game, group, playerLookup) {
   }
 
   if (claim) {
-    const noble = {
-      id: `bga-noble-${String(claim.args && claim.args.card && (claim.args.card.type || claim.args.card.id) || group.move_id)}`,
-      name: String(claim.args && claim.args.noble_desc || "BGA noble"),
-      points: 3,
-      req: normalizeCost({})
-    };
+    const nobleRaw = bgaRawCardTypeId(claim.args && claim.args.card, group.move_id);
+    let noble = bgaNobleFromDb(nobleRaw, gamedatas, { name: claim.args && claim.args.noble_desc || "BGA noble" });
+    const nobleIndex = game.nobles.findIndex((entry) =>
+      entry && ((entry.bga_id && entry.bga_id === noble.bga_id) || entry.id === noble.id)
+    );
+    if (nobleIndex >= 0) noble = game.nobles.splice(nobleIndex, 1)[0];
     player.nobles.push(noble);
     return { type: "chooseNoble", player, args: { noble_id: noble.name } };
   }
@@ -456,7 +802,11 @@ export function convertBgaCaptureToGemTableReplay(payload) {
   }
   const data = extractBgaReplayData(payload);
   if (!data) throw new Error("No BGA archive logs were found in the capture JSON.");
-  const bgaPlayers = buildBgaPlayerList(data);
+  const initialBgaGamedatas = extractBgaInitialGamedatas(payload);
+  if (!initialBgaGamedatas) {
+    throw new Error("No BGA initial gamedatas were found. Re-run the crawler with the latest BoardReplayLab script so it enters the archive replay page before exporting.");
+  }
+  const bgaPlayers = buildBgaPlayerList(data, initialBgaGamedatas);
   if (bgaPlayers.length < 2) throw new Error("At least two BGA players are required for a Gem Table replay.");
 
   const game = createGameFromBgaPlayers(payload.table_id, bgaPlayers);
@@ -464,10 +814,11 @@ export function convertBgaCaptureToGemTableReplay(payload) {
   bgaPlayers.forEach((player, index) => {
     if (game.players[index]) playerLookup[String(player.id)] = game.players[index];
   });
+  applyBgaInitialGamedatas(game, initialBgaGamedatas);
   game.initial_gamedatas = toGamedatas(game, true);
 
   groupBgaPacketsByMove(data.logs).forEach((group) => {
-    const converted = applyBgaMoveGroup(game, group, playerLookup);
+    const converted = applyBgaMoveGroup(game, group, playerLookup, initialBgaGamedatas);
     if (!converted) return;
     const actor = converted.player;
     const move = {
@@ -500,8 +851,8 @@ export function convertBgaCaptureToGemTableReplay(payload) {
       base_game_only: true,
       active_expansion_flags: [],
       notes: [
-        "BGA archive logs do not expose the full private initial gamedatas object.",
-        "Card costs that are not present in archive notifications are left empty.",
+        "The crawler exports browser-visible BGA gameui.gamedatas plus archive notifications.",
+        "Inactive expansion references are ignored; explicit active expansion flags are rejected.",
         "The output is ZephyrLabs Gem Table replay schema compatible, not an official BGA protocol clone."
       ]
     }

@@ -302,8 +302,8 @@ async function assertNotLoginOrLobby(page) {
   ) {
     throw new Error("BGA redirected to login or lobby. Log in with the crawler browser profile and make sure this account can view the table replay.");
   }
-  if (!/gamereview/i.test(current.url)) {
-    throw new Error(`BGA did not stay on the gamereview page. Current URL: ${current.url}`);
+  if (!/gamereview|\/archive\/replay/i.test(current.url)) {
+    throw new Error(`BGA did not stay on a BGA review or replay page. Current URL: ${current.url}`);
   }
 }
 
@@ -343,6 +343,13 @@ async function pageHasReplaySurface(page) {
   }).catch(() => false);
 }
 
+async function pageHasBgaGamedatas(page) {
+  return page.evaluate(() => {
+    const gameui = window.gameui || window.gameui_playback || null;
+    return !!(gameui && gameui.gamedatas && gameui.gamedatas.market && gameui.gamedatas.carddb);
+  }).catch(() => false);
+}
+
 async function waitForReplayData(page, responses, timeoutMs) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -351,6 +358,31 @@ async function waitForReplayData(page, responses, timeoutMs) {
     await page.waitForTimeout(350);
   }
   throw new Error(`BGA review page did not load usable replay data within ${timeoutMs}ms. Login, permission, or Premium access may be required.`);
+}
+
+async function waitForBgaGamedatas(page, timeoutMs) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (await pageHasBgaGamedatas(page)) return true;
+    await page.waitForTimeout(500);
+  }
+  throw new Error(`BGA replay page did not expose gameui.gamedatas within ${timeoutMs}ms. The table may be unavailable, unsupported, or still loading.`);
+}
+
+async function findArchiveReplayUrl(page, tableId) {
+  return page.evaluate((targetTableId) => {
+    if (/\/archive\/replay/i.test(location.href)) return location.href;
+    const links = Array.from(document.querySelectorAll("a[href*='/archive/replay/'], a.choosePlayerLink"));
+    for (const link of links) {
+      const raw = link.getAttribute("href") || "";
+      if (!raw) continue;
+      const url = new URL(raw, location.href);
+      if (!/\/archive\/replay/i.test(url.href)) continue;
+      if (String(targetTableId || "") && url.searchParams.get("table") !== String(targetTableId)) continue;
+      return url.href;
+    }
+    return "";
+  }, String(tableId || "")).catch(() => "");
 }
 
 async function waitForArchiveLogsResponse(page, responses, timeoutMs) {
@@ -629,6 +661,15 @@ async function main() {
   await waitForReplayData(page, responses, args.waitMs);
   await assertNotLoginOrLobby(page);
   await assertBgaReplayAccessible(page);
+  const archiveReplayUrl = await findArchiveReplayUrl(page, args.table);
+  if (archiveReplayUrl && archiveReplayUrl !== page.url()) {
+    console.log(`Opening archive replay ${archiveReplayUrl}`);
+    await page.goto(archiveReplayUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+    await page.waitForTimeout(1800);
+    await assertNotLoginOrLobby(page);
+    await assertBgaReplayAccessible(page);
+  }
+  await waitForBgaGamedatas(page, args.waitMs);
   if (!(await waitForArchiveLogsResponse(page, responses, Math.min(args.waitMs, 15000)))) {
     await fetchArchiveLogs(page, args.table, responses).catch(() => {});
   }

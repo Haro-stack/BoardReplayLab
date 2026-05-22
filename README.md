@@ -14,7 +14,9 @@ npm install
 npx playwright install chromium
 ```
 
-Capture a BGA replay in a local browser:
+Capture a BGA replay in a local browser. The crawler first opens the official
+review page, then enters the player replay page and waits for browser-visible
+`gameui.gamedatas` before exporting:
 
 ```bash
 node scripts/bga-splendor-replay-crawler.mjs --table 854928957 --manual --wait-ms 300000
@@ -87,9 +89,10 @@ The converted file uses the same top-level schema as Gem Table export:
 ```
 
 This is a schema-compatible replay conversion, not an official BGA protocol
-clone. BGA archive logs do not expose every private initial field, so fields not
-visible in the browser replay, such as some hidden card costs at initial state,
-may be reconstructed only when they appear in later notifications.
+clone. The crawler uses browser-visible `gameui.gamedatas` for the initial
+market, card database, nobles, and bank, then uses archive notifications to
+advance the replay. Hidden future deck order is still private to BGA, so
+continuing play after an imported BGA replay may not match BGA's hidden deck.
 
 ## Scripts
 
