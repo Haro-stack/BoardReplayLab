@@ -157,6 +157,84 @@ Important fields:
 The complete `source_state` snapshots are what make replay stepping, jumping,
 and continue-from-replay possible.
 
+### Gem Table v2 Expansion Preparation
+
+Expansion-aware fixture helpers use the draft schema
+`zephyrlabs-gemtable-bga-v2`. This shape is for schema and converter
+preparation only; live BGA Orient replay import is still rejected by the
+base-game converter until full fixture conversion is implemented and tested.
+
+The first draft separates market identity from the legacy base-game tier/index
+slot:
+
+```json
+{
+  "schema": "zephyrlabs-gemtable-bga-v2",
+  "base_schema": "zephyrlabs-gemtable-bga-v1",
+  "expansion_status": {
+    "active": ["Orient"],
+    "live_import_supported": false,
+    "unsupported_reasons": [
+      {
+        "code": "bga.orient.live_import_unsupported",
+        "label": "Orient"
+      }
+    ]
+  },
+  "market_areas": {
+    "base": {
+      "id": "base",
+      "expansion": null,
+      "tiers": {
+        "1": [
+          {
+            "slot": {
+              "area": "base",
+              "tier": 1,
+              "index": 0,
+              "slot_id": "base:t1:s0",
+              "legacy_args": { "tier": 1, "market_index": 0 }
+            }
+          }
+        ]
+      }
+    },
+    "orient": {
+      "id": "orient",
+      "expansion": "Orient",
+      "tiers": {
+        "1": [
+          {
+            "slot": {
+              "area": "orient",
+              "tier": 1,
+              "index": 0,
+              "slot_id": "orient:t1:s0",
+              "legacy_args": null
+            },
+            "ability": {
+              "expansion": "Orient",
+              "code": "reserve_noble",
+              "support_status": "metadata_only",
+              "unsupported_reason": {
+                "code": "gemtable.orient.ability_metadata_only"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "card_ability_metadata": []
+}
+```
+
+Base-game slots keep `legacy_args` so existing `buyMarket` and `reserveMarket`
+encoding can remain unchanged. Orient slots use the same stable `slot_id`
+contract but intentionally have no legacy base-game action mapping yet. Orient
+card abilities are preserved as metadata with exact unsupported reason codes;
+they are not executable by the base-game converter.
+
 ### DinoBoard Splendor 2P Wire Schema
 
 The DinoBoard bridge targets the DinoBoard project at
