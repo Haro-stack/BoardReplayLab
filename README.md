@@ -160,9 +160,11 @@ and continue-from-replay possible.
 ### Gem Table v2 Expansion Preparation
 
 Expansion-aware fixture helpers use the draft schema
-`zephyrlabs-gemtable-bga-v2`. This shape is for schema and converter
-preparation only; live BGA Orient replay import is still rejected by the
-base-game converter until full fixture conversion is implemented and tested.
+`zephyrlabs-gemtable-bga-v2`. Orient is now represented as a supported Gem
+Table module: base cards stay in the legacy market area, Orient cards live in
+their own market area, and ability metadata maps to executable Gem Table
+effects such as `copy_bonus`, `virtual_gold_2`, `double_bonus`,
+`take_level_free`, and `discard_cards_cost`.
 
 The first draft separates market identity from the legacy base-game tier/index
 slot:
@@ -173,13 +175,8 @@ slot:
   "base_schema": "zephyrlabs-gemtable-bga-v1",
   "expansion_status": {
     "active": ["Orient"],
-    "live_import_supported": false,
-    "unsupported_reasons": [
-      {
-        "code": "bga.orient.live_import_unsupported",
-        "label": "Orient"
-      }
-    ]
+    "live_import_supported": true,
+    "unsupported_reasons": []
   },
   "market_areas": {
     "base": {
@@ -214,11 +211,9 @@ slot:
             },
             "ability": {
               "expansion": "Orient",
-              "code": "reserve_noble",
-              "support_status": "metadata_only",
-              "unsupported_reason": {
-                "code": "gemtable.orient.ability_metadata_only"
-              }
+              "code": "copy_bonus",
+              "support_status": "gemtable_supported",
+              "unsupported_reason": null
             }
           }
         ]
@@ -231,9 +226,8 @@ slot:
 
 Base-game slots keep `legacy_args` so existing `buyMarket` and `reserveMarket`
 encoding can remain unchanged. Orient slots use the same stable `slot_id`
-contract but intentionally have no legacy base-game action mapping yet. Orient
-card abilities are preserved as metadata with exact unsupported reason codes;
-they are not executable by the base-game converter.
+contract and are exported with `market_id: "orient"` / `orient_market` state so
+Gem Table can replay them without faking base-game tier/index positions.
 
 ### DinoBoard Splendor 2P Wire Schema
 
@@ -312,8 +306,8 @@ add module-aware market slot metadata for training fixtures.
         "dinoboard_catalog_id": null,
         "ability": {
           "expansion": "Orient",
-          "code": "reserve_noble",
-          "support_status": "metadata_only"
+          "code": "copy_bonus",
+          "support_status": "gemtable_supported"
         }
       },
       "legal_actions": [
@@ -337,8 +331,8 @@ add module-aware market slot metadata for training fixtures.
       "pending": [
         {
           "kind": "card_ability",
-          "ability_code": "reserve_noble",
-          "status": "metadata_only"
+          "ability_code": "copy_bonus",
+          "status": "gemtable_supported"
         }
       ]
     }
@@ -350,10 +344,10 @@ add module-aware market slot metadata for training fixtures.
 
 Base slots use stable ids such as `base:t1:s0`, keep legacy tier/index args,
 and carry base v1 action ids when they still fit the `0..23` buy/reserve
-ranges. Orient slots use the same `area:tier:slot` identity contract but are
-marked `pending_engine_support` until an expansion engine can execute them.
-Orient card abilities stay in `card.ability` and `pending` metadata; they are
-not emitted as fake executable legal actions.
+ranges. Orient slots use the same `area:tier:slot` identity contract. Gem Table
+can execute the Orient effects, while the DinoBoard v1 action id space still
+marks Orient buy/reserve actions as `pending_engine_support` until an expanded
+DinoBoard policy/action head is available.
 
 Action id ranges:
 
@@ -383,9 +377,12 @@ The converter:
 - Converts grouped archive notifications into Gem Table moves.
 - Maps BGA card ids to local Gem Table card ids by tier, color, points, and
   cost signature when ids differ.
+- Maps BGA Orient card ids `201..230` to Gem Table `orient-201..orient-230`
+  cards by BGA `carddb` fields and preserves each card's Orient effects.
 - Treats disabled expansion fields such as `isCitiesActivate: false` as normal
   base-game metadata.
-- Rejects active unsupported expansions, such as `isCitiesActivate: true`.
+- Accepts active Orient captures and rejects active unsupported expansions,
+  such as `isCitiesActivate: true`.
 
 Known limitation: BGA does not expose all hidden future deck order through the
 public browser replay data. Imported replay playback is stable because each
@@ -434,9 +431,11 @@ The BGA converter is intentionally strict about active expansions:
   flags are ignored.
 - Descriptive text such as a noble description mentioning "Silk Road" is treated
   as a reference, not an active expansion.
-- A real active expansion flag such as `isCitiesActivate: true` is rejected with
-  an explicit error because Gem Table currently supports only base-game
-  Splendor replay import.
+- A real active unsupported expansion flag such as `isCitiesActivate: true`,
+  Trading Posts, Strongholds, Cities, or Silk Road is rejected with an explicit
+  error.
+- Active Orient is allowed and converted into `ruleset.modules.orient`,
+  `orient_market`, and Orient card effect metadata.
 
 Table `854928957` has been audited as base-game compatible under these rules:
 it contains inactive Cities fields and a Silk Road description reference, but no

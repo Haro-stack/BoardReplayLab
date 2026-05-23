@@ -8,7 +8,6 @@ import {
 import {
   GEMTABLE_EXPANSION_SCHEMA,
   MARKET_AREA_IDS,
-  UNSUPPORTED_REASON_CODES,
   marketSlotIdentity,
   normalizeBgaGamedatasForGemTableV2
 } from "../lib/gemtable-expansion-schema.mjs";
@@ -43,21 +42,24 @@ function orientGamedatas() {
     carddb: {
       101: { lvl: 1, type: 0, points: 0, cost: "SSS" },
       201: {
-        lvl: 1,
-        type: 1,
+        lvl: 11,
+        type: 5,
         points: 0,
-        cost: "CC",
-        expansion: "orient",
-        ability: "reserve_noble",
-        ability_text: "Reserve an available noble tile."
+        cost: "CCCRR",
+        symbolCopy: 1,
+        symbolTake: 0,
+        nbBonus: 0,
+        costCard: ""
       },
       202: {
-        lvl: 2,
-        type: 2,
+        lvl: 12,
+        type: 0,
         points: 1,
-        cost: { C: 2, S: 2 },
-        expansion: "orient",
-        power: { code: "double_bonus", text: "Counts as two green bonuses." }
+        cost: "RRRREEE",
+        symbolCopy: 0,
+        symbolTake: 0,
+        nbBonus: 2,
+        costCard: ""
       }
     }
   };
@@ -78,23 +80,16 @@ function orientCapture() {
   };
 }
 
-test("detects active Orient captures with exact unsupported reason metadata", () => {
+test("detects active Orient captures without treating Orient as unsupported", () => {
   const flags = activeExpansionFlags(orientCapture());
   assert.deepEqual(flags.map((entry) => entry.label), ["Orient"]);
 
   const reasons = activeExpansionUnsupportedReasons(orientCapture());
-  assert.equal(reasons.length, 1);
-  assert.equal(reasons[0].code, UNSUPPORTED_REASON_CODES.ACTIVE_EXPANSION);
-  assert.equal(reasons[0].label, "Orient");
-  assert.equal(reasons[0].path, "snapshots[0].gameui.gamedatas.expansion_orient");
-  assert.equal(
-    reasons[0].message,
-    "Active expansion flag detected: Orient at snapshots[0].gameui.gamedatas.expansion_orient. Live BGA expansion conversion is not supported yet."
-  );
+  assert.deepEqual(reasons, []);
 
   assert.throws(
     () => convertBgaCaptureToGemTableReplay(orientCapture()),
-    /Active expansion flag detected: Orient at snapshots\[0\]\.gameui\.gamedatas\.expansion_orient/
+    /No BGA archive logs were found/
   );
 });
 
@@ -102,8 +97,8 @@ test("normalizes base and Orient market slots into Gem Table v2 fixture shape", 
   const normalized = normalizeBgaGamedatasForGemTableV2(orientGamedatas());
   assert.equal(normalized.schema, GEMTABLE_EXPANSION_SCHEMA);
   assert.deepEqual(normalized.expansion_status.active, ["Orient"]);
-  assert.equal(normalized.expansion_status.live_import_supported, false);
-  assert.equal(normalized.expansion_status.unsupported_reasons[0].code, UNSUPPORTED_REASON_CODES.ORIENT_LIVE_IMPORT);
+  assert.equal(normalized.expansion_status.live_import_supported, true);
+  assert.deepEqual(normalized.expansion_status.unsupported_reasons, []);
 
   const baseCard = normalized.market_areas.base.tiers[1][0];
   assert.equal(baseCard.slot.area, MARKET_AREA_IDS.BASE);
@@ -115,9 +110,10 @@ test("normalizes base and Orient market slots into Gem Table v2 fixture shape", 
   assert.equal(orientCard.slot.area, MARKET_AREA_IDS.ORIENT);
   assert.equal(orientCard.slot.slot_id, "orient:t1:s0");
   assert.equal(orientCard.slot.legacy_args, null);
-  assert.equal(orientCard.ability.code, "reserve_noble");
-  assert.equal(orientCard.ability.support_status, "metadata_only");
-  assert.equal(orientCard.ability.unsupported_reason.code, UNSUPPORTED_REASON_CODES.ORIENT_ABILITY_METADATA_ONLY);
+  assert.equal(orientCard.ability.code, "copy_bonus");
+  assert.equal(orientCard.ability.support_status, "gemtable_supported");
+  assert.equal(orientCard.ability.unsupported_reason, null);
+  assert.deepEqual(orientCard.ability.effects.map((effect) => effect.effect), ["copy_bonus"]);
 });
 
 test("derives slot identity from explicit area or BGA-style location", () => {
