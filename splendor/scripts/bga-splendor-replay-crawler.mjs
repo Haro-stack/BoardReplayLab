@@ -9,7 +9,7 @@ const SCHEMA = "zephyrlabs-bga-replay-crawler-v1";
 function usage() {
   return [
     "Usage:",
-    "  node scripts/bga-splendor-replay-crawler.mjs --table <BGA_TABLE_ID> [--out ./bga-replays] [--manual] [--headless] [--wait-ms 60000]",
+    "  node splendor/scripts/bga-splendor-replay-crawler.mjs --table <BGA_TABLE_ID> [--out ./bga-replays] [--manual] [--headless] [--wait-ms 60000]",
     "",
     "Notes:",
     "  - The script opens the official BGA review page in a local browser.",

@@ -18,7 +18,7 @@ const ALL_TOKENS = COLORS.concat(["gold"]);
 function usage() {
   return [
     "Usage:",
-    "  node scripts/convert-splendor-capture.mjs --in ./bga-replays/bga-table-854928957-replay.json [--out ./gemtable-replays]",
+    "  node splendor/scripts/convert-splendor-capture.mjs --in ./bga-replays/bga-table-854928957-replay.json [--out ./gemtable-replays]",
     "",
     "Notes:",
     "  - Converts BGA archive log captures into ZephyrLabs Gem Table replay JSON.",
@@ -1017,7 +1017,7 @@ export function convertBgaCaptureToGemTableReplay(payload) {
   if (!data) throw new Error("No BGA archive logs were found in the capture JSON.");
   const initialBgaGamedatas = extractBgaInitialGamedatas(payload);
   if (!initialBgaGamedatas) {
-    throw new Error("No BGA initial gamedatas were found. Re-run the crawler with the latest BoardReplayLab script so it enters the archive replay page before exporting.");
+    throw new Error("No BGA initial gamedatas were found. Re-run the Splendor crawler with the latest BoardReplayLab tool so it enters the archive replay page before exporting.");
   }
   const bgaPlayers = buildBgaPlayerList(data, initialBgaGamedatas);
   if (bgaPlayers.length < 2) throw new Error("At least two BGA players are required for a Gem Table replay.");
