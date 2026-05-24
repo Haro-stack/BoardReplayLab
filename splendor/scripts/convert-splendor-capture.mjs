@@ -514,6 +514,13 @@ export function isActiveExpansionValue(value) {
   return false;
 }
 
+export function isInactiveExpansionValue(value) {
+  if (value === false || value === null) return true;
+  if (typeof value === "number") return value === 0 || value === 2;
+  if (typeof value === "string") return /^(false|0|2|no|off|disabled|inactive|)$/i.test(value.trim());
+  return false;
+}
+
 export function activeExpansionFlags(payload) {
   const active = [];
   function push(entry) {
@@ -576,7 +583,9 @@ function bgaInitialGamedatasOrientActive(gamedatas) {
 
 function bgaInitialGamedatasStrongholdsActive(gamedatas) {
   if (!gamedatas || !gamedatas.market) return false;
-  if (isActiveExpansionValue(gamedatas.expansion_strongholds)) return true;
+  const flag = gamedatas.expansion_strongholds;
+  if (isActiveExpansionValue(flag)) return true;
+  if (isInactiveExpansionValue(flag)) return false;
   return Object.keys(gamedatas.market.strongholds || {}).length > 0;
 }
 
@@ -838,6 +847,62 @@ function marketSlotForBgaCardId(game, bgaCardId) {
   return null;
 }
 
+function strongholdPlacementCountForPlayer(game, playerIndex) {
+  const strongholds = ensureStrongholds(game);
+  return Object.keys(strongholds.placements).reduce((count, slotId) => {
+    const holders = strongholds.placements[slotId];
+    if (!Array.isArray(holders)) return count;
+    return count + holders.filter((entry) => Number(entry) === Number(playerIndex)).length;
+  }, 0);
+}
+
+function drawStrongholdTokenForPlayer(game, playerIndex, excludeTokenId) {
+  const strongholds = ensureStrongholds(game);
+  const exclude = String(excludeTokenId || "");
+  const tokenIds = Object.keys(strongholds.tokens).sort((a, b) => (Number(a) || 0) - (Number(b) || 0));
+  for (const tokenId of tokenIds) {
+    if (tokenId === exclude) continue;
+    const token = strongholds.tokens[tokenId];
+    if (!token || Number(token.player_index) !== Number(playerIndex)) continue;
+    if (token.slot_id) continue;
+    if (token.location && token.location !== "draw") continue;
+    return token;
+  }
+  return null;
+}
+
+function synthesizeStrongholdToken(game, template) {
+  const strongholds = ensureStrongholds(game);
+  const playerIndex = Number(template && template.player_index) || 0;
+  let suffix = 1;
+  let tokenId = `synthetic:${playerIndex}:${suffix}`;
+  while (strongholds.tokens[tokenId]) {
+    suffix += 1;
+    tokenId = `synthetic:${playerIndex}:${suffix}`;
+  }
+  const token = Object.assign({}, template || {}, {
+    id: tokenId,
+    bga_id: tokenId,
+    player_index: playerIndex,
+    bga_player_id: template && template.bga_player_id || "",
+    player_id: template && template.player_id || (game.players[playerIndex] ? game.players[playerIndex].id : ""),
+    token_number: suffix,
+    location: "draw",
+    slot_id: null,
+    card_bga_id: ""
+  });
+  strongholds.tokens[tokenId] = token;
+  return token;
+}
+
+function tokenForRepeatedStrongholdDestination(game, token, destinationSlotId) {
+  if (!token || !destinationSlotId || token.slot_id !== destinationSlotId) return token;
+  const playerIndex = Number(token.player_index);
+  if (!Number.isInteger(playerIndex)) return token;
+  if (strongholdPlacementCountForPlayer(game, playerIndex) >= 3) return token;
+  return drawStrongholdTokenForPlayer(game, playerIndex, token.id) || synthesizeStrongholdToken(game, token);
+}
+
 function removeStrongholdTokenFromSlot(game, tokenId) {
   const strongholds = ensureStrongholds(game);
   const token = strongholds.tokens[String(tokenId)];
@@ -888,7 +953,7 @@ function placeStrongholdTokenOnBgaCard(game, tokenId, destinationBgaId) {
   const token = strongholds.tokens[String(tokenId)];
   if (!token) return null;
   const destination = marketSlotForBgaCardId(game, destinationBgaId);
-  removeStrongholdTokenFromSlot(game, tokenId);
+  if (token.slot_id) removeStrongholdTokenFromSlot(game, tokenId);
   token.location = String(destinationBgaId || "");
   token.card_bga_id = String(destinationBgaId || "");
   if (!destination) {
@@ -906,11 +971,11 @@ function applyBgaStrongholdEvent(game, item, playerLookup) {
   const args = item.args;
   const actor = playerLookup[String(args.player_id || "")] || game.players[0];
   const actorIndex = Math.max(0, game.players.indexOf(actor));
-  const tokenId = String(args.strongholdsId || "");
+  let tokenId = String(args.strongholdsId || "");
   const rawToken = args.stronghold || args.strongholds || { id: tokenId, type: args.player_id, location: args.strongholdsDestination };
   let token = ensureStrongholds(game).tokens[tokenId] || registerBgaStrongholdToken(game, rawToken, args.player_id);
   if (!token) return null;
-  const fromSlotId = token.slot_id || null;
+  let fromSlotId = token.slot_id || null;
   const destination = String(args.strongholdsDestination || "draw");
   if (!destination || destination === "draw") {
     removeStrongholdTokenFromSlot(game, tokenId);
@@ -924,6 +989,12 @@ function applyBgaStrongholdEvent(game, item, playerLookup) {
       removed_player_index: Number(token.player_index),
       destination: "draw"
     };
+  }
+  const destinationSlot = marketSlotForBgaCardId(game, destination);
+  if (destinationSlot && fromSlotId === destinationSlot.slotId) {
+    token = tokenForRepeatedStrongholdDestination(game, token, destinationSlot.slotId);
+    tokenId = String(token.id);
+    fromSlotId = token.slot_id || null;
   }
   const target = placeStrongholdTokenOnBgaCard(game, tokenId, destination);
   token = ensureStrongholds(game).tokens[tokenId];
@@ -1071,9 +1142,37 @@ function clearStrongholdsAtSlot(game, slotId) {
   return holders;
 }
 
-function revealBgaMarketCard(game, items, tier, gamedatas, slot) {
-  const reveal = (items || []).find((entry) => entry && entry.type === "revealCard" && entry.args && entry.args.card);
+function bgaMarketRefFromCardLocation(card, fallbackTier) {
+  const location = String(card && card.location || "");
+  const match = location.match(/^(market|orient)_(\d+)$/i);
+  const marketId = match && match[1].toLowerCase() === "orient" ? ORIENT_MARKET_ID : BASE_MARKET_ID;
+  const tier = Math.max(1, Math.min(3, Number(match && match[2] || fallbackTier) || 1));
+  const rawIndex = Number(card && card.location_arg);
+  return {
+    marketId,
+    tier,
+    index: Number.isInteger(rawIndex) && rawIndex >= 0 ? rawIndex : null
+  };
+}
+
+function findBgaRevealCardItem(items, slot, usedRevealItems) {
+  const reveals = (items || []).filter((entry) =>
+    entry && entry.type === "revealCard" && entry.args && entry.args.card && !(usedRevealItems && usedRevealItems.has(entry))
+  );
+  if (!slot) return reveals[0] || null;
+  return reveals.find((entry) => {
+    const ref = bgaMarketRefFromCardLocation(entry.args.card, slot.tier);
+    return ref.marketId === slot.marketId && ref.tier === slot.tier && ref.index === slot.index;
+  }) || reveals.find((entry) => {
+    const ref = bgaMarketRefFromCardLocation(entry.args.card, slot.tier);
+    return ref.marketId === slot.marketId && ref.tier === slot.tier;
+  }) || reveals[0] || null;
+}
+
+function revealBgaMarketCard(game, items, tier, gamedatas, slot, usedRevealItems) {
+  const reveal = findBgaRevealCardItem(items, slot, usedRevealItems);
   if (!reveal) return null;
+  if (usedRevealItems) usedRevealItems.add(reveal);
   const revealCard = bgaCardFromNotification(reveal, items || [], { tier }, gamedatas);
   if (!revealCard || !revealCard.bga_id || revealCard.bga_id === "unknown") return null;
   const targetTier = Math.max(1, Math.min(3, Number(revealCard.tier || tier) || 1));
@@ -1093,9 +1192,10 @@ function revealBgaMarketCard(game, items, tier, gamedatas, slot) {
   return revealCard;
 }
 
-function applyBgaRevealCards(game, items, gamedatas) {
+function applyBgaRevealCards(game, items, gamedatas, usedRevealItems) {
   (items || []).forEach((entry) => {
     if (!entry || entry.type !== "revealCard" || !entry.args || !entry.args.card) return;
+    if (usedRevealItems && usedRevealItems.has(entry)) return;
     const card = bgaCardFromNotification(entry, items || [], { card: entry.args.card }, gamedatas);
     if (!card || !card.bga_id || card.bga_id === "unknown") return;
     const targetTier = Math.max(1, Math.min(3, Number(card.tier) || 1));
@@ -1110,7 +1210,54 @@ function applyBgaRevealCards(game, items, gamedatas) {
     else cards.push(card);
     targetMarket[targetTier] = cards;
     decrementBgaDeck(game, targetTier, targetMarketId);
+    if (usedRevealItems) usedRevealItems.add(entry);
   });
+}
+
+function orientCardAbilities(card, effect) {
+  return Array.isArray(card && card.abilities)
+    ? card.abilities.filter((ability) => !effect || ability && ability.effect === effect)
+    : [];
+}
+
+function orientFreeSourceCard(acquiredCards, tier) {
+  for (let index = acquiredCards.length - 1; index >= 0; index -= 1) {
+    const card = acquiredCards[index];
+    if (orientCardAbilities(card, "take_level_free").some((ability) => Number(ability.free_tier) === Number(tier))) {
+      return card;
+    }
+  }
+  return acquiredCards[0] || null;
+}
+
+function acquireBgaBuyCard(game, player, buyItem, items, gamedatas, usedRevealItems) {
+  const buyCard = bgaCardFromNotification(buyItem, items, { player_id: buyItem && buyItem.args && buyItem.args.player_id }, gamedatas);
+  const fromHand = /hand/i.test(String(buyItem && buyItem.args && buyItem.args.card && buyItem.args.card.location || ""));
+  let buySlot = null;
+  let strongholdsReturned = [];
+  if (fromHand) {
+    const reservedIndex = player.reserved.findIndex((card) =>
+      card.bga_id && card.bga_id === buyCard.bga_id || card.id === buyCard.id
+    );
+    if (reservedIndex >= 0) {
+      buyCard.reserved_from = player.reserved[reservedIndex].reserved_from;
+      player.reserved.splice(reservedIndex, 1);
+    } else {
+      buyCard.reserved_from = "deck";
+    }
+  } else {
+    buySlot = removeBgaMarketCard(game, buyCard);
+    if (buySlot) strongholdsReturned = clearStrongholdsAtSlot(game, marketSlotId(game, buySlot.marketId, buySlot.tier, buySlot.index));
+    revealBgaMarketCard(game, items, buyCard.tier, gamedatas, buySlot, usedRevealItems);
+  }
+  applyCardBonuses(player, buyCard);
+  player.purchased.push(buyCard);
+  return {
+    card: buyCard,
+    fromHand,
+    slot: buySlot,
+    strongholdsReturned
+  };
 }
 
 function groupBgaPacketsByMove(logs) {
@@ -1175,7 +1322,8 @@ function applyBgaMoveGroup(game, group, playerLookup, gamedatas) {
   const items = group.items || [];
   const publicReserve = items.find((entry) => entry.type === "reserveCard" && (entry.log || entry.args && entry.args.player_name));
   const privateReserve = items.find((entry) => entry.type === "reserveCard" && entry.args && entry.args.card);
-  const buy = items.find((entry) => entry.type === "buyCard");
+  const buyItems = items.filter((entry) => entry.type === "buyCard");
+  const buy = buyItems[0];
   const claim = items.find((entry) => entry.type === "claimNoble");
   const end = items.find((entry) => entry.type === "simpleNode" && /end of game/i.test(entry.log || ""));
   const coins = items.filter((entry) => entry.type === "coins");
@@ -1192,28 +1340,27 @@ function applyBgaMoveGroup(game, group, playerLookup, gamedatas) {
   const strongholdEffects = applyBgaStrongholdEvents(game, items, playerLookup);
 
   if (buy) {
-    const buyCard = bgaCardFromNotification(buy, items, { player_id: externalId }, gamedatas);
-    const fromHand = /hand/i.test(String(buy.args && buy.args.card && buy.args.card.location || ""));
-    let buySlot = null;
-    let strongholdsReturned = [];
-    if (fromHand) {
-      const reservedIndex = player.reserved.findIndex((card) =>
-        card.bga_id && card.bga_id === buyCard.bga_id || card.id === buyCard.id
-      );
-      if (reservedIndex >= 0) {
-        buyCard.reserved_from = player.reserved[reservedIndex].reserved_from;
-        player.reserved.splice(reservedIndex, 1);
-      } else {
-        buyCard.reserved_from = "deck";
-      }
-    } else {
-      buySlot = removeBgaMarketCard(game, buyCard);
-      if (buySlot) strongholdsReturned = clearStrongholdsAtSlot(game, marketSlotId(game, buySlot.marketId, buySlot.tier, buySlot.index));
-      revealBgaMarketCard(game, items, buyCard.tier, gamedatas, buySlot);
-    }
-    applyBgaRevealCards(game, items, gamedatas);
-    applyCardBonuses(player, buyCard);
-    player.purchased.push(buyCard);
+    const usedRevealItems = new Set();
+    const primaryPurchase = acquireBgaBuyCard(game, player, buy, items, gamedatas, usedRevealItems);
+    const buyCard = primaryPurchase.card;
+    const acquiredCards = [buyCard];
+    const orientEffects = [];
+    buyItems.slice(1).forEach((freeBuy) => {
+      const freePurchase = acquireBgaBuyCard(game, player, freeBuy, items, gamedatas, usedRevealItems);
+      const sourceCard = orientFreeSourceCard(acquiredCards, freePurchase.card.tier);
+      acquiredCards.push(freePurchase.card);
+      orientEffects.push({
+        type: "free_card",
+        source_card_id: sourceCard && sourceCard.id || buyCard.id,
+        card_id: freePurchase.card.id,
+        tier: freePurchase.card.tier,
+        market_id: freePurchase.slot ? freePurchase.slot.marketId : freePurchase.card.module || BASE_MARKET_ID,
+        market_slot_id: freePurchase.slot ? marketSlotId(game, freePurchase.slot.marketId, freePurchase.slot.tier, freePurchase.slot.index) : null,
+        strongholds_returned: freePurchase.strongholdsReturned,
+        card: clone(freePurchase.card)
+      });
+    });
+    applyBgaRevealCards(game, items, gamedatas, usedRevealItems);
     const args = {
       card_id: buyCard.id,
       card: buyCard,
@@ -1221,15 +1368,16 @@ function applyBgaMoveGroup(game, group, playerLookup, gamedatas) {
       reserved_from: buyCard.reserved_from || "market",
       payment: { tokens: bgaCoinsFromGap(coins, -1), gold_as: emptyCounts(false) }
     };
-    if (buySlot) {
-      args.market_id = buySlot.marketId;
-      args.market_index = buySlot.index;
-      args.market_slot_id = marketSlotId(game, buySlot.marketId, buySlot.tier, buySlot.index);
+    if (primaryPurchase.slot) {
+      args.market_id = primaryPurchase.slot.marketId;
+      args.market_index = primaryPurchase.slot.index;
+      args.market_slot_id = marketSlotId(game, primaryPurchase.slot.marketId, primaryPurchase.slot.tier, primaryPurchase.slot.index);
     }
-    if (strongholdsReturned.length) args.strongholds_returned = strongholdsReturned;
+    if (primaryPurchase.strongholdsReturned.length) args.strongholds_returned = primaryPurchase.strongholdsReturned;
     if (strongholdEffects.length) args.stronghold_effects = strongholdEffects;
+    if (orientEffects.length) args.orient_effects = orientEffects;
     return {
-      type: fromHand ? "buyReserved" : "buyMarket",
+      type: primaryPurchase.fromHand ? "buyReserved" : "buyMarket",
       player,
       args
     };
@@ -1248,9 +1396,11 @@ function applyBgaMoveGroup(game, group, playerLookup, gamedatas) {
     } else {
       const reserveSlot = removeBgaMarketCard(game, reserveCard);
       if (reserveSlot) clearStrongholdsAtSlot(game, marketSlotId(game, reserveSlot.marketId, reserveSlot.tier, reserveSlot.index));
-      revealBgaMarketCard(game, items, reserveCard.tier, gamedatas, reserveSlot);
+      const usedRevealItems = new Set();
+      revealBgaMarketCard(game, items, reserveCard.tier, gamedatas, reserveSlot, usedRevealItems);
+      applyBgaRevealCards(game, items, gamedatas, usedRevealItems);
     }
-    applyBgaRevealCards(game, items, gamedatas);
+    if (fromDeck) applyBgaRevealCards(game, items, gamedatas);
     return {
       type: fromDeck ? "reserveDeck" : "reserveMarket",
       player,

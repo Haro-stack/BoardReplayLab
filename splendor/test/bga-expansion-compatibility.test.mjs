@@ -118,6 +118,143 @@ function strongholdsCapture() {
   };
 }
 
+function repeatedStrongholdDestinationCapture() {
+  const capture = strongholdsCapture();
+  capture.table_id = "fixture-stronghold-repeat";
+  capture.snapshots[0].gameui.gamedatas.market.strongholds.p1[3] = {
+    id: "3",
+    type: "p1",
+    type_arg: "2",
+    location: "draw",
+    location_arg: "0"
+  };
+  capture.responses[0].parsed_json.data.logs = [
+    {
+      move_id: "1",
+      data: [
+        {
+          type: "moveStronghold",
+          args: {
+            player_id: "p1",
+            player_name: "Alice",
+            strongholdsDestination: "32",
+            strongholdsId: "1"
+          }
+        }
+      ]
+    },
+    {
+      move_id: "2",
+      data: [
+        {
+          type: "moveStronghold",
+          args: {
+            player_id: "p1",
+            player_name: "Alice",
+            strongholdsDestination: "32",
+            strongholdsId: "1"
+          }
+        }
+      ]
+    }
+  ];
+  return capture;
+}
+
+function orientFreeCardCapture() {
+  return {
+    schema: "zephyrlabs-bga-replay-crawler-v1",
+    table_id: "fixture-orient-free",
+    snapshots: [
+      {
+        gameui: {
+          gamedatas: {
+            expansion_orient: "1",
+            players: {
+              p1: { id: "p1", name: "Alice" },
+              p2: { id: "p2", name: "Bob" }
+            },
+            market: {
+              pool: { C: 4, S: 4, E: 4, R: 4, O: 4, G: 5 },
+              row_1: {
+                count: 35,
+                cards: {
+                  0: { id: "32", type: "32", type_arg: "0", location: "market_1", location_arg: 0 }
+                }
+              },
+              row_2: { count: 0, cards: {} },
+              row_3: { count: 0, cards: {} },
+              orient_row_1: { count: 0, cards: {} },
+              orient_row_2: {
+                count: 1,
+                cards: {
+                  0: { id: "216", type: "216", type_arg: "0", location: "orient_2", location_arg: 0 }
+                }
+              },
+              orient_row_3: { count: 0, cards: {} },
+              nobles: {}
+            },
+            carddb: {
+              32: { lvl: 1, type: 0, points: 0, cost: "SSS" },
+              33: { lvl: 1, type: 1, points: 0, cost: "EEE" },
+              211: { lvl: 12, type: 0, points: 1, cost: "RRRREEE" },
+              216: { lvl: 12, type: 5, points: 1, cost: "RRRREEEC", symbolCopy: 1, symbolTake: 1 }
+            },
+            nobledb: {}
+          }
+        }
+      }
+    ],
+    responses: [
+      {
+        parsed_json: {
+          data: {
+            players: [
+              { id: "p1", name: "Alice" },
+              { id: "p2", name: "Bob" }
+            ],
+            logs: [
+              {
+                move_id: "1",
+                data: [
+                  {
+                    type: "buyCard",
+                    args: {
+                      player_id: "p1",
+                      player_name: "Alice",
+                      card: { id: "216", type: "216", location: "orient_2", location_arg: 0 }
+                    }
+                  },
+                  {
+                    type: "buyCard",
+                    args: {
+                      player_id: "p1",
+                      player_name: "Alice",
+                      card: { id: "32", type: "32", location: "market_1", location_arg: 0 }
+                    }
+                  },
+                  {
+                    type: "revealCard",
+                    args: {
+                      card: { id: "211", type: "211", location: "orient_2", location_arg: 0 }
+                    }
+                  },
+                  {
+                    type: "revealCard",
+                    args: {
+                      card: { id: "33", type: "33", location: "market_1", location_arg: 0 }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  };
+}
+
 test("recognizes known Splendor expansion labels from BGA-like keys", () => {
   assert.equal(expansionLabelFor("isCitiesActivate"), "Cities");
   assert.equal(expansionLabelFor("expansion_orient"), "Orient");
@@ -285,6 +422,33 @@ test("converter applies Strongholds placement and removal events to slot state",
   assert.equal(removed.tokens["1"].slot_id, null);
   assert.equal(replay.moves[1].args.stronghold_effects[0].type, "remove");
   assert.equal(replay.compatibility.strongholds_supported, true);
+});
+
+test("converter counts repeated Strongholds placements on the same destination", () => {
+  const replay = convertBgaCaptureToGemTableReplay(repeatedStrongholdDestinationCapture());
+  const repeated = replay.moves[1].state_after.source_state.strongholds;
+  assert.deepEqual(repeated.placements["base:t1:s0"], [0, 0]);
+  assert.equal(repeated.tokens["1"].slot_id, "base:t1:s0");
+  assert.equal(repeated.tokens["3"].slot_id, "base:t1:s0");
+  assert.equal(replay.moves[1].args.stronghold_effects[0].type, "place");
+  assert.equal(replay.moves[1].args.stronghold_effects[0].token_id, "3");
+});
+
+test("converter records Orient free card acquisitions and matched refills", () => {
+  const replay = convertBgaCaptureToGemTableReplay(orientFreeCardCapture());
+  const move = replay.moves[0];
+  const state = move.state_after.source_state;
+  assert.equal(move.type, "buyMarket");
+  assert.equal(move.args.card.bga_id, "216");
+  assert.equal(move.args.orient_effects.length, 1);
+  assert.equal(move.args.orient_effects[0].type, "free_card");
+  assert.equal(move.args.orient_effects[0].card.bga_id, "32");
+  assert.equal(move.args.orient_effects[0].market_slot_id, "base:t1:s0");
+  assert.deepEqual(state.players[0].purchased.map((card) => card.bga_id), ["216", "32"]);
+  assert.equal(state.market[1][0].bga_id, "33");
+  assert.equal(state.orient_market[2][0].bga_id, "211");
+  assert.equal(state.decks[1].length, 34);
+  assert.equal(state.orient_decks[2].length, 0);
 });
 
 let failed = 0;
