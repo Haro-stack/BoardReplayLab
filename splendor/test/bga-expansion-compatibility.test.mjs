@@ -32,6 +32,92 @@ function activePayload(extraGamedatas) {
   };
 }
 
+function strongholdsCapture() {
+  return {
+    schema: "zephyrlabs-bga-replay-crawler-v1",
+    table_id: "fixture-strongholds",
+    snapshots: [
+      {
+        gameui: {
+          gamedatas: {
+            expansion_strongholds: "1",
+            players: {
+              p1: { id: "p1", name: "Alice" },
+              p2: { id: "p2", name: "Bob" }
+            },
+            market: {
+              pool: { C: 4, S: 4, E: 4, R: 4, O: 4, G: 5 },
+              row_1: {
+                count: 36,
+                cards: {
+                  0: { id: "32", type: "32", type_arg: "0", location: "market_1", location_arg: 0 }
+                }
+              },
+              row_2: { count: 0, cards: {} },
+              row_3: { count: 0, cards: {} },
+              nobles: {},
+              strongholds: {
+                p1: {
+                  1: { id: "1", type: "p1", type_arg: "1", location: "draw", location_arg: "0" }
+                },
+                p2: {
+                  2: { id: "2", type: "p2", type_arg: "1", location: "draw", location_arg: "0" }
+                }
+              }
+            },
+            carddb: {
+              32: { lvl: 1, type: 0, points: 0, cost: "SSS" }
+            },
+            nobledb: {}
+          }
+        }
+      }
+    ],
+    responses: [
+      {
+        parsed_json: {
+          data: {
+            players: [
+              { id: "p1", name: "Alice" },
+              { id: "p2", name: "Bob" }
+            ],
+            logs: [
+              {
+                move_id: "1",
+                data: [
+                  {
+                    type: "moveStronghold",
+                    args: {
+                      player_id: "p1",
+                      player_name: "Alice",
+                      strongholdsDestination: "32",
+                      strongholdsId: "1"
+                    }
+                  }
+                ]
+              },
+              {
+                move_id: "2",
+                data: [
+                  {
+                    type: "moveStronghold",
+                    args: {
+                      player_id: "p2",
+                      player_name: "Bob",
+                      strongholdsDestination: "draw",
+                      strongholdsId: "1"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  };
+}
+
 test("recognizes known Splendor expansion labels from BGA-like keys", () => {
   assert.equal(expansionLabelFor("isCitiesActivate"), "Cities");
   assert.equal(expansionLabelFor("expansion_orient"), "Orient");
@@ -156,6 +242,49 @@ test("converter does not reject crawler compatibility reports when only Orient i
     }),
     /No BGA archive logs were found/
   );
+});
+
+test("converter does not reject crawler compatibility reports when only Strongholds is active", () => {
+  assert.throws(
+    () => convertBgaCaptureToGemTableReplay({
+      compatibility: {
+        expansion_detection: {
+          active: [{ label: "Strongholds", path: "snapshot.gameui.gamedatas.expansion_strongholds" }]
+        }
+      },
+      snapshots: [
+        {
+          gameui: {
+            gamedatas: {
+              market: {},
+              carddb: {}
+            }
+          }
+        }
+      ],
+      responses: []
+    }),
+    /No BGA archive logs were found/
+  );
+});
+
+test("converter applies Strongholds placement and removal events to slot state", () => {
+  const replay = convertBgaCaptureToGemTableReplay(strongholdsCapture());
+  assert.equal(replay.gamedatas.ruleset.modules.strongholds, true);
+  assert.equal(replay.gamedatas.module_state.strongholds.enabled, true);
+  assert.deepEqual(replay.gamedatas.source_state.strongholds.placements, {});
+
+  const placed = replay.moves[0].state_after.source_state.strongholds;
+  assert.deepEqual(placed.placements["base:t1:s0"], [0]);
+  assert.equal(placed.tokens["1"].slot_id, "base:t1:s0");
+  assert.equal(replay.moves[0].type, "strongholdMove");
+  assert.equal(replay.moves[0].args.stronghold_effects[0].type, "place");
+
+  const removed = replay.moves[1].state_after.source_state.strongholds;
+  assert.equal(removed.placements["base:t1:s0"], undefined);
+  assert.equal(removed.tokens["1"].slot_id, null);
+  assert.equal(replay.moves[1].args.stronghold_effects[0].type, "remove");
+  assert.equal(replay.compatibility.strongholds_supported, true);
 });
 
 let failed = 0;
