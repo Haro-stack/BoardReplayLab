@@ -110,7 +110,31 @@ test("converter rejects active expansion captures before base-game conversion", 
   );
 });
 
-test("converter also rejects crawler compatibility active reports", () => {
+test("converter rejects crawler compatibility active reports for unsupported modules", () => {
+  assert.throws(
+    () => convertBgaCaptureToGemTableReplay({
+      compatibility: {
+        expansion_detection: {
+          active: [{ label: "Cities", path: "snapshot.gameui.gamedatas.isCitiesActivate" }]
+        }
+      },
+      snapshots: [
+        {
+          gameui: {
+            gamedatas: {
+              market: {},
+              carddb: {}
+            }
+          }
+        }
+      ],
+      responses: []
+    }),
+    /Active expansion flag detected: Cities at snapshot\.gameui\.gamedatas\.isCitiesActivate/
+  );
+});
+
+test("converter does not reject crawler compatibility reports when only Orient is active", () => {
   assert.throws(
     () => convertBgaCaptureToGemTableReplay({
       compatibility: {
@@ -130,7 +154,7 @@ test("converter also rejects crawler compatibility active reports", () => {
       ],
       responses: []
     }),
-    /Active expansion flag detected: Orient at snapshot\.gameui\.gamedatas\.expansion_orient/
+    /No BGA archive logs were found/
   );
 });
 

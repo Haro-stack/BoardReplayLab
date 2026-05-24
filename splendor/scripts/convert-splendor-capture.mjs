@@ -9,18 +9,21 @@ const { readFile, writeFile, mkdir } = fs.promises;
 
 const RAW_SCHEMA = "zephyrlabs-bga-replay-crawler-v1";
 const GEMTABLE_SCHEMA = "zephyrlabs-gemtable-bga-v1";
+const BASE_RULESET_ID = "splendor-base";
+const ORIENT_RULESET_ID = "splendor-base-orient";
+const ORIENT_MARKET_ID = "orient";
 const COLORS = ["white", "blue", "green", "red", "black"];
 const ALL_TOKENS = COLORS.concat(["gold"]);
 
 function usage() {
   return [
     "Usage:",
-    "  node scripts/convert-splendor-capture.mjs --in ./bga-replays/bga-table-854928957-replay.json [--out ./gemtable-replays]",
+    "  node splendor/scripts/convert-splendor-capture.mjs --in ./bga-replays/bga-table-854928957-replay.json [--out ./gemtable-replays]",
     "",
     "Notes:",
     "  - Converts BGA archive log captures into ZephyrLabs Gem Table replay JSON.",
-    "  - Only base-game Splendor captures are supported.",
-    "  - Explicit active expansion flags such as isCitiesActivate=true are rejected.",
+    "  - Base-game Splendor and active Orient captures are supported.",
+    "  - Active Cities, Trading Posts, Strongholds, and Silk Road flags are rejected.",
     "  - Descriptive text such as a noble_desc mentioning Silk Road is ignored unless an active flag is true."
   ].join("\n");
 }
@@ -200,6 +203,88 @@ function buildDevelopmentCards() {
 
 const DEVELOPMENT_CARDS = buildDevelopmentCards();
 
+const ORIENT_CARDDB_ROWS = [
+  [201, 11, 5, 0, "CCCRR", 1, 0, 0, ""],
+  [202, 11, 5, 0, "RRRSS", 1, 0, 0, ""],
+  [203, 11, 5, 0, "SSSEE", 1, 0, 0, ""],
+  [204, 11, 5, 0, "EEEOO", 1, 0, 0, ""],
+  [205, 11, 5, 0, "OOOCC", 1, 0, 0, ""],
+  [206, 11, 6, 0, "RRR", 0, 0, 0, ""],
+  [207, 11, 6, 0, "EEE", 0, 0, 0, ""],
+  [208, 11, 6, 0, "SSS", 0, 0, 0, ""],
+  [209, 11, 6, 0, "CCC", 0, 0, 0, ""],
+  [210, 11, 6, 0, "OOO", 0, 0, 0, ""],
+  [211, 12, 0, 1, "RRRREEE", 0, 0, 2, ""],
+  [212, 12, 1, 1, "OOOORRR", 0, 0, 2, ""],
+  [213, 12, 2, 1, "CCCCOOO", 0, 0, 2, ""],
+  [214, 12, 3, 1, "SSSSCCC", 0, 0, 2, ""],
+  [215, 12, 4, 1, "EEEESSS", 0, 0, 2, ""],
+  [216, 12, 5, 1, "RRRREEEC", 1, 1, 0, ""],
+  [217, 12, 5, 1, "SSSSOOOR", 1, 1, 0, ""],
+  [218, 12, 5, 1, "OOOORRRE", 1, 1, 0, ""],
+  [219, 12, 5, 1, "EEEECCCS", 1, 1, 0, ""],
+  [220, 12, 5, 1, "CCCCSSSO", 1, 1, 0, ""],
+  [221, 13, 4, 3, "", 0, 0, 1, "SS"],
+  [222, 13, 2, 3, "", 0, 0, 1, "OO"],
+  [223, 13, 3, 3, "", 0, 0, 1, "CC"],
+  [224, 13, 0, 3, "", 0, 0, 1, "EE"],
+  [225, 13, 1, 3, "", 0, 0, 1, "RR"],
+  [226, 13, 0, 1, "SSSSSSEEER", 0, 2, 1, ""],
+  [227, 13, 1, 1, "EEEEEERRRO", 0, 2, 1, ""],
+  [228, 13, 2, 1, "RRRRRROOOC", 0, 2, 1, ""],
+  [229, 13, 3, 1, "OOOOOOCCCS", 0, 2, 1, ""],
+  [230, 13, 4, 1, "CCCCCCSSSE", 0, 2, 1, ""]
+];
+
+function bgaCodeCost(value) {
+  const counts = emptyCounts(false);
+  String(value || "").split("").forEach((code) => {
+    const color = bgaGemColor(code);
+    if (color && COLORS.includes(color)) counts[color] += 1;
+  });
+  return counts;
+}
+
+function orientAbilitiesForRow(row, color, costCardColor) {
+  const abilities = [];
+  if (row.symbolCopy) abilities.push({ effect: "copy_bonus", timing: "on_acquire", status: "implemented", requires_choice: true });
+  if (row.type === 6) abilities.push({ effect: "virtual_gold_2", timing: "future_payment", status: "implemented", virtual_gold: 2 });
+  if (row.nbBonus === 2) abilities.push({ effect: "double_bonus", timing: "on_acquire", status: "implemented", bonus_color: color, bonus_count: 2 });
+  if (row.symbolTake) abilities.push({ effect: "take_level_free", timing: "on_acquire", status: "implemented", free_tier: row.symbolTake, requires_choice: true });
+  if (costCardColor) abilities.push({ effect: "discard_cards_cost", timing: "on_buy", status: "implemented", color: costCardColor, count: 2 });
+  return abilities;
+}
+
+function buildOrientCards() {
+  const cardsById = new Map();
+  ORIENT_CARDDB_ROWS.forEach((raw) => {
+    const row = { id: raw[0], lvl: raw[1], type: raw[2], points: raw[3], cost: raw[4], symbolCopy: raw[5], symbolTake: raw[6], nbBonus: raw[7], costCard: raw[8] };
+    const tier = row.lvl - 10;
+    const color = row.type >= 0 && row.type <= 4 ? COLORS[row.type] : "gold";
+    const costCard = bgaCodeCost(row.costCard);
+    const costCardColor = COLORS.find((entry) => costCard[entry] > 0) || "";
+    const orientBonus = emptyCounts(false);
+    if (row.type >= 0 && row.type <= 4 && row.nbBonus > 0) orientBonus[color] = row.nbBonus;
+    cardsById.set(String(row.id), {
+      id: `orient-${row.id}`,
+      bga_id: String(row.id),
+      tier,
+      color,
+      printed_color: row.type >= 0 && row.type <= 4 ? color : null,
+      points: row.points,
+      cost: bgaCodeCost(row.cost),
+      module: ORIENT_MARKET_ID,
+      bga_carddb: row,
+      orient_effective: { bonus: orientBonus, virtual_gold: row.type === 6, virtual_gold_value: row.type === 6 ? 2 : 0 },
+      orient_cost_card: costCardColor ? { color: costCardColor, count: costCard[costCardColor] || 2 } : null,
+      abilities: orientAbilitiesForRow(row, color, costCardColor)
+    });
+  });
+  return cardsById;
+}
+
+const ORIENT_CARDS_BY_BGA_ID = buildOrientCards();
+
 function tokenCountForPlayers(playerCount) {
   if (playerCount === 2) return 4;
   if (playerCount === 3) return 5;
@@ -211,20 +296,70 @@ function scoreFor(player) {
     player.nobles.reduce((sum, noble) => sum + (Number(noble.points) || 0), 0);
 }
 
+function cardBonusCounts(card) {
+  const bonuses = emptyCounts(false);
+  if (!card) return bonuses;
+  if (card.module === ORIENT_MARKET_ID && card.orient_effective && card.orient_effective.bonus) {
+    COLORS.forEach((color) => {
+      bonuses[color] = Math.max(0, Number(card.orient_effective.bonus[color]) || 0);
+    });
+    return bonuses;
+  }
+  if (COLORS.includes(card.color)) bonuses[card.color] = 1;
+  return bonuses;
+}
+
+function applyCardBonuses(player, card) {
+  const bonuses = cardBonusCounts(card);
+  COLORS.forEach((color) => {
+    player.bonuses[color] += bonuses[color] || 0;
+  });
+}
+
 function gameStateTextFor(game) {
   if (game.gameOver) return "Game finished";
   return "BGA replay import";
 }
 
+function createRuleset(orient) {
+  return {
+    id: orient ? ORIENT_RULESET_ID : BASE_RULESET_ID,
+    name: orient ? "Splendor base + Orient" : "Splendor base",
+    modules: {
+      cities: false,
+      trading_posts: false,
+      orient: !!orient,
+      strongholds: false
+    }
+  };
+}
+
+function createModuleState(ruleset) {
+  const orient = !!(ruleset && ruleset.modules && ruleset.modules.orient);
+  return {
+    orient: {
+      enabled: orient,
+      status: orient ? "supported" : "disabled",
+      catalog_schema: "zephyrlabs-gemtable-orient-bga-carddb-v1",
+      card_count: ORIENT_CARDS_BY_BGA_ID.size,
+      market_slot_count: 2
+    }
+  };
+}
+
 function compactSourceState(game) {
   return {
     schema: GEMTABLE_SCHEMA,
+    ruleset: clone(game.ruleset || createRuleset(false)),
+    module_state: clone(game.module_state || createModuleState(game.ruleset)),
     table_seed: game.table_seed,
     next_move_id: game.next_move_id,
     players: clone(game.players),
     bank: clone(game.bank),
     decks: clone(game.decks),
     market: clone(game.market),
+    orient_decks: clone(game.orient_decks || { 1: [], 2: [], 3: [] }),
+    orient_market: clone(game.orient_market || { 1: [], 2: [], 3: [] }),
     nobles: clone(game.nobles),
     current: game.current,
     round: game.round,
@@ -267,8 +402,11 @@ function toGamedatas(game, includeSourceState) {
       current_player_id: game.players[game.current] ? game.players[game.current].id : null,
       active_player_id: game.players[game.current] ? game.players[game.current].id : null,
       next_move_id: game.next_move_id,
-      mode: "replay"
+      mode: "replay",
+      ruleset_id: game.ruleset && game.ruleset.id || BASE_RULESET_ID
     },
+    ruleset: clone(game.ruleset || createRuleset(false)),
+    module_state: clone(game.module_state || createModuleState(game.ruleset)),
     gamestate: {
       name: game.gameOver ? "gameEnd" : "playerTurn",
       description: gameStateTextFor(game),
@@ -278,8 +416,14 @@ function toGamedatas(game, includeSourceState) {
     playerorder: game.players.map((player) => player.id),
     bank: clone(game.bank),
     market: clone(game.market),
+    orient_market: clone(game.orient_market || { 1: [], 2: [], 3: [] }),
     nobles: clone(game.nobles),
     decks_remaining: { 1: game.decks[1].length, 2: game.decks[2].length, 3: game.decks[3].length },
+    orient_decks_remaining: {
+      1: game.orient_decks && game.orient_decks[1] ? game.orient_decks[1].length : 0,
+      2: game.orient_decks && game.orient_decks[2] ? game.orient_decks[2].length : 0,
+      3: game.orient_decks && game.orient_decks[3] ? game.orient_decks[3].length : 0
+    },
     awaiting: { discard: false, noble_choice: null },
     end: { triggered: false, final_turns_left: null, game_over: !!game.gameOver },
     log: game.log.slice()
@@ -357,6 +501,7 @@ export function activeExpansionFlags(payload) {
 export function activeExpansionUnsupportedReasons(payload) {
   const reasons = [];
   function push(flag) {
+    if (/orient/i.test(String(flag && flag.label || ""))) return;
     const reason = activeExpansionUnsupportedReason(flag);
     if (!reasons.some((entry) => entry.code === reason.code && entry.label === reason.label && entry.path === reason.path)) {
       reasons.push(reason);
@@ -375,6 +520,16 @@ export function activeExpansionUnsupportedReasons(payload) {
     });
   });
   return reasons;
+}
+
+function bgaInitialGamedatasOrientActive(gamedatas) {
+  if (!gamedatas || !gamedatas.market) return false;
+  const flag = gamedatas.expansion_orient;
+  const flagActive = isActiveExpansionValue(flag);
+  return flagActive || [1, 2, 3].some((tier) => {
+    const row = gamedatas.market[`orient_row_${tier}`];
+    return !!(row && bgaObjectValues(row.cards).length);
+  });
 }
 
 function bgaGemColor(code) {
@@ -502,6 +657,10 @@ function bgaCardFromDb(raw, gamedatas, fallback) {
   let points = Math.max(0, Number(fallback && fallback.points) || 0);
   let cost = normalizeCost({});
   if (db) {
+    if (Number(db.lvl) >= 11 && Number(db.lvl) <= 13) {
+      const orientCard = ORIENT_CARDS_BY_BGA_ID.get(id);
+      if (orientCard) return clone(orientCard);
+    }
     tier = Math.max(1, Math.min(3, Number(db.lvl) || tier));
     color = bgaCardTypeColor(db.type) || color;
     points = Math.max(0, Number(db.points) || 0);
@@ -602,12 +761,27 @@ function applyBgaInitialGamedatas(game, gamedatas) {
   if (!gamedatas || !gamedatas.market || !gamedatas.carddb) return false;
   const market = gamedatas.market || {};
   if (market.pool) game.bank = bgaPoolToBank(market.pool);
+  const orientActive = bgaInitialGamedatasOrientActive(gamedatas);
+  if (orientActive) {
+    game.ruleset = createRuleset(true);
+    game.module_state = createModuleState(game.ruleset);
+  }
   [1, 2, 3].forEach((tier) => {
     const row = market[`row_${tier}`] || {};
     game.market[tier] = bgaObjectValues(row.cards)
       .map((entry) => bgaCardFromDb(bgaRawCardTypeId(entry, entry && entry.type), gamedatas, { tier }))
       .filter((card) => card && card.bga_id && card.bga_id !== "unknown");
     game.decks[tier] = bgaDeckPlaceholders(tier, Number(row.count) || 0);
+    if (orientActive) {
+      const orientRow = market[`orient_row_${tier}`] || {};
+      game.orient_market[tier] = bgaObjectValues(orientRow.cards)
+        .map((entry) => bgaCardFromDb(bgaRawCardTypeId(entry, entry && entry.type), gamedatas, { tier }))
+        .filter((card) => card && card.bga_id && card.bga_id !== "unknown");
+      game.orient_decks[tier] = bgaDeckPlaceholders(tier, Number(orientRow.count) || 0).map((card) => {
+        card.module = ORIENT_MARKET_ID;
+        return card;
+      });
+    }
   });
   game.nobles = bgaObjectValues(market.nobles)
     .map((entry) => bgaNobleFromDb(bgaRawCardTypeId(entry, entry && entry.type), gamedatas, {}))
@@ -621,19 +795,22 @@ function applyBgaInitialGamedatas(game, gamedatas) {
   return true;
 }
 
-function decrementBgaDeck(game, tier) {
-  if (game.decks[tier] && game.decks[tier].length) game.decks[tier].pop();
+function decrementBgaDeck(game, tier, marketId) {
+  const decks = marketId === ORIENT_MARKET_ID ? game.orient_decks : game.decks;
+  if (decks && decks[tier] && decks[tier].length) decks[tier].pop();
 }
 
 function removeBgaMarketCard(game, card) {
   const tier = Math.max(1, Math.min(3, Number(card && card.tier) || 1));
-  const cards = game.market[tier] || [];
+  const marketId = card && card.module === ORIENT_MARKET_ID ? ORIENT_MARKET_ID : "base";
+  const market = marketId === ORIENT_MARKET_ID ? game.orient_market : game.market;
+  const cards = market[tier] || [];
   const index = cards.findIndex((entry) =>
     entry && card && ((entry.bga_id && entry.bga_id === card.bga_id) || entry.id === card.id)
   );
   if (index >= 0) {
     cards[index] = null;
-    return { tier, index };
+    return { tier, index, marketId };
   }
   return null;
 }
@@ -641,26 +818,34 @@ function removeBgaMarketCard(game, card) {
 function revealBgaMarketCard(game, items, tier, gamedatas, slot) {
   const reveal = (items || []).find((entry) => entry && entry.type === "revealCard" && entry.args && entry.args.card);
   if (!reveal) {
-    if (slot && game.market[slot.tier] && !game.market[slot.tier][slot.index]) game.market[slot.tier].splice(slot.index, 1);
+    if (slot) {
+      const slotMarket = slot.marketId === ORIENT_MARKET_ID ? game.orient_market : game.market;
+      if (slotMarket && slotMarket[slot.tier] && !slotMarket[slot.tier][slot.index]) slotMarket[slot.tier].splice(slot.index, 1);
+    }
     return null;
   }
   const revealCard = bgaCardFromNotification(reveal, items || [], { tier }, gamedatas);
   if (!revealCard || !revealCard.bga_id || revealCard.bga_id === "unknown") {
-    if (slot && game.market[slot.tier] && !game.market[slot.tier][slot.index]) game.market[slot.tier].splice(slot.index, 1);
+    if (slot) {
+      const slotMarket = slot.marketId === ORIENT_MARKET_ID ? game.orient_market : game.market;
+      if (slotMarket && slotMarket[slot.tier] && !slotMarket[slot.tier][slot.index]) slotMarket[slot.tier].splice(slot.index, 1);
+    }
     return null;
   }
   const targetTier = Math.max(1, Math.min(3, Number(revealCard.tier || tier) || 1));
-  const exists = (game.market[targetTier] || []).some((entry) => entry && entry.bga_id === revealCard.bga_id);
+  const targetMarketId = revealCard.module === ORIENT_MARKET_ID ? ORIENT_MARKET_ID : "base";
+  const targetMarket = targetMarketId === ORIENT_MARKET_ID ? game.orient_market : game.market;
+  const exists = (targetMarket[targetTier] || []).some((entry) => entry && entry.bga_id === revealCard.bga_id);
   if (!exists) {
-    if (slot && slot.tier === targetTier && Number.isInteger(slot.index) && game.market[targetTier]) {
-      game.market[targetTier][slot.index] = revealCard;
+    if (slot && slot.marketId === targetMarketId && slot.tier === targetTier && Number.isInteger(slot.index) && targetMarket[targetTier]) {
+      targetMarket[targetTier][slot.index] = revealCard;
     } else {
-      const emptyIndex = (game.market[targetTier] || []).findIndex((entry) => !entry);
-      if (emptyIndex >= 0) game.market[targetTier][emptyIndex] = revealCard;
-      else game.market[targetTier].push(revealCard);
+      const emptyIndex = (targetMarket[targetTier] || []).findIndex((entry) => !entry);
+      if (emptyIndex >= 0) targetMarket[targetTier][emptyIndex] = revealCard;
+      else targetMarket[targetTier].push(revealCard);
     }
   }
-  decrementBgaDeck(game, targetTier);
+  decrementBgaDeck(game, targetTier, targetMarketId);
   return revealCard;
 }
 
@@ -677,13 +862,16 @@ function groupBgaPacketsByMove(logs) {
     .map((key) => groups[key]);
 }
 
-function createGameFromBgaPlayers(tableId, bgaPlayers) {
+function createGameFromBgaPlayers(tableId, bgaPlayers, options = {}) {
   const tokenCount = tokenCountForPlayers(bgaPlayers.length);
+  const ruleset = createRuleset(!!options.orient);
   const game = {
     schema: GEMTABLE_SCHEMA,
     created_at: new Date().toISOString(),
     mode: "live",
     playerCount: bgaPlayers.length,
+    ruleset,
+    module_state: createModuleState(ruleset),
     table_seed: 0,
     next_move_id: 1,
     players: bgaPlayers.map((player, index) => ({
@@ -700,6 +888,8 @@ function createGameFromBgaPlayers(tableId, bgaPlayers) {
     bank: emptyCounts(true),
     decks: { 1: [], 2: [], 3: [] },
     market: { 1: [], 2: [], 3: [] },
+    orient_decks: { 1: [], 2: [], 3: [] },
+    orient_market: { 1: [], 2: [], 3: [] },
     nobles: [],
     current: 0,
     round: 1,
@@ -750,7 +940,7 @@ function applyBgaMoveGroup(game, group, playerLookup, gamedatas) {
       const buySlot = removeBgaMarketCard(game, buyCard);
       revealBgaMarketCard(game, items, buyCard.tier, gamedatas, buySlot);
     }
-    if (COLORS.includes(buyCard.color)) player.bonuses[buyCard.color] += 1;
+    applyCardBonuses(player, buyCard);
     player.purchased.push(buyCard);
     return {
       type: fromHand ? "buyReserved" : "buyMarket",
@@ -827,12 +1017,12 @@ export function convertBgaCaptureToGemTableReplay(payload) {
   if (!data) throw new Error("No BGA archive logs were found in the capture JSON.");
   const initialBgaGamedatas = extractBgaInitialGamedatas(payload);
   if (!initialBgaGamedatas) {
-    throw new Error("No BGA initial gamedatas were found. Re-run the crawler with the latest BoardReplayLab script so it enters the archive replay page before exporting.");
+    throw new Error("No BGA initial gamedatas were found. Re-run the Splendor crawler with the latest BoardReplayLab tool so it enters the archive replay page before exporting.");
   }
   const bgaPlayers = buildBgaPlayerList(data, initialBgaGamedatas);
   if (bgaPlayers.length < 2) throw new Error("At least two BGA players are required for a Gem Table replay.");
 
-  const game = createGameFromBgaPlayers(payload.table_id, bgaPlayers);
+  const game = createGameFromBgaPlayers(payload.table_id, bgaPlayers, { orient: bgaInitialGamedatasOrientActive(initialBgaGamedatas) });
   const playerLookup = {};
   bgaPlayers.forEach((player, index) => {
     if (game.players[index]) playerLookup[String(player.id)] = game.players[index];
@@ -871,11 +1061,12 @@ export function convertBgaCaptureToGemTableReplay(payload) {
     source_schema: payload.schema || RAW_SCHEMA,
     bga_table_id: payload.table_id || "",
     compatibility: {
-      base_game_only: true,
+      base_game_only: !bgaInitialGamedatasOrientActive(initialBgaGamedatas),
+      orient_supported: bgaInitialGamedatasOrientActive(initialBgaGamedatas),
       active_expansion_flags: [],
       notes: [
         "The crawler exports browser-visible BGA gameui.gamedatas plus archive notifications.",
-        "Inactive expansion references are ignored; explicit active expansion flags are rejected.",
+        "Inactive expansion references are ignored; active Orient is supported; other explicit active expansion flags are rejected.",
         "The output is ZephyrLabs Gem Table replay schema compatible, not an official BGA protocol clone."
       ]
     }

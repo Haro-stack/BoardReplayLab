@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "type": "module",
   "private": false,
-  "description": "Local BGA replay capture and conversion tools for ZephyrLabs Gem Table experiments.",
+  "description": "Replay capture and conversion lab for board-game data pipelines.",
   "scripts": {
-    "crawl:splendor": "node scripts/bga-splendor-replay-crawler.mjs",
-    "convert:splendor": "node scripts/convert-splendor-capture.mjs",
-    "convert:dinoboard": "node scripts/convert-dinoboard-splendor.mjs",
-    "test": "node test/dinoboard-splendor2p-bridge.test.mjs && node test/bga-expansion-compatibility.test.mjs && node test/orient-schema-fixtures.test.mjs",
-    "check": "node --check scripts/bga-splendor-replay-crawler.mjs && node --check scripts/convert-splendor-capture.mjs && node --check scripts/convert-dinoboard-splendor.mjs && node --check lib/gemtable-expansion-schema.mjs && node test/dinoboard-splendor2p-bridge.test.mjs && node test/bga-expansion-compatibility.test.mjs && node test/orient-schema-fixtures.test.mjs"
+    "crawl:splendor": "node splendor/scripts/bga-splendor-replay-crawler.mjs",
+    "convert:splendor": "node splendor/scripts/convert-splendor-capture.mjs",
+    "convert:dinoboard": "node splendor/scripts/convert-dinoboard-splendor.mjs",
+    "test": "node splendor/test/dinoboard-splendor2p-bridge.test.mjs && node splendor/test/bga-expansion-compatibility.test.mjs && node splendor/test/orient-schema-fixtures.test.mjs",
+    "check": "node --check splendor/scripts/bga-splendor-replay-crawler.mjs && node --check splendor/scripts/convert-splendor-capture.mjs && node --check splendor/scripts/convert-dinoboard-splendor.mjs && node --check splendor/lib/gemtable-expansion-schema.mjs && node splendor/test/dinoboard-splendor2p-bridge.test.mjs && node splendor/test/bga-expansion-compatibility.test.mjs && node splendor/test/orient-schema-fixtures.test.mjs"
   },
   "dependencies": {
     "playwright": "1.44.0"

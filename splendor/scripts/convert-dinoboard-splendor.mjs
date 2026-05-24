@@ -12,8 +12,8 @@ import {
 function usage() {
   return [
     "Usage:",
-    "  node scripts/convert-dinoboard-splendor.mjs --direction gemtable-to-dinoboard --in replay.json [--out ./dinoboard-replays] [--ai-seat 1]",
-    "  node scripts/convert-dinoboard-splendor.mjs --direction dinoboard-to-gemtable --in framed-replay.json [--out ./gemtable-replays]",
+    "  node splendor/scripts/convert-dinoboard-splendor.mjs --direction gemtable-to-dinoboard --in replay.json [--out ./dinoboard-replays] [--ai-seat 1]",
+    "  node splendor/scripts/convert-dinoboard-splendor.mjs --direction dinoboard-to-gemtable --in framed-replay.json [--out ./gemtable-replays]",
     "",
     "Notes:",
     "  - Supports Splendor 2P only.",
