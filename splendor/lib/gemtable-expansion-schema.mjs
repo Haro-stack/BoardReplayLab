@@ -83,6 +83,10 @@ function bgaCardTypeColor(type) {
   return COLORS[Number(type)] || "";
 }
 
+function bgaOrientCardColor(type) {
+  return bgaCardTypeColor(type) || (Number(type) === 5 ? "wild" : "gold");
+}
+
 function normalizeCost(cost) {
   const counts = emptyCounts();
   if (!cost) return counts;
@@ -242,7 +246,7 @@ function normalizeBgaMarketCard(card, gamedatas, area, tier, index) {
     id: `bga-${rawId}`,
     bga_id: rawId,
     tier: slot.tier,
-    color: typeColor || (orientCard ? "gold" : String(raw.color || "")),
+    color: typeColor || (orientCard ? bgaOrientCardColor(raw.type) : String(raw.color || "")),
     points: Math.max(0, Number(raw.points) || 0),
     cost: normalizeCost(raw.cost),
     orient_cost_card: orientCard ? normalizeOrientCardDiscardCost(raw) : null,

@@ -264,7 +264,7 @@ function buildOrientCards() {
   ORIENT_CARDDB_ROWS.forEach((raw) => {
     const row = { id: raw[0], lvl: raw[1], type: raw[2], points: raw[3], cost: raw[4], symbolCopy: raw[5], symbolTake: raw[6], nbBonus: raw[7], costCard: raw[8] };
     const tier = row.lvl - 10;
-    const color = row.type >= 0 && row.type <= 4 ? COLORS[row.type] : "gold";
+    const color = bgaOrientCardColor(row.type);
     const costCard = bgaCodeCost(row.costCard);
     const costCardColor = COLORS.find((entry) => costCard[entry] > 0) || "";
     const orientBonus = emptyCounts(false);
@@ -602,6 +602,10 @@ function bgaGemColor(code) {
 
 function bgaCardTypeColor(type) {
   return ["white", "blue", "green", "red", "black"][Number(type)] || "";
+}
+
+function bgaOrientCardColor(type) {
+  return bgaCardTypeColor(type) || (Number(type) === 5 ? "wild" : "gold");
 }
 
 function bgaRawCardTypeId(card, fallback) {

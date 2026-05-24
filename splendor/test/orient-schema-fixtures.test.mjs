@@ -80,6 +80,62 @@ function orientCapture() {
   };
 }
 
+function orientReplayCaptureWithTier2Wild() {
+  return {
+    schema: "zephyrlabs-bga-replay-crawler-v1",
+    table_id: "fixture-orient-wild",
+    snapshots: [
+      {
+        gameui: {
+          gamedatas: {
+            expansion_orient: true,
+            gamestate: { active_player: "p1" },
+            market: {
+              pool: { C: 4, S: 4, E: 4, R: 4, O: 4, G: 5 },
+              row_1: { count: 0, cards: {} },
+              row_2: { count: 0, cards: {} },
+              row_3: { count: 0, cards: {} },
+              orient_row_1: { count: 0, cards: {} },
+              orient_row_2: { count: 0, cards: { 0: { id: "220", location: "orient_2", location_arg: 0 } } },
+              orient_row_3: { count: 0, cards: {} }
+            },
+            carddb: {
+              220: {
+                lvl: 12,
+                type: 5,
+                points: 1,
+                cost: "CCCCSSSO",
+                symbolCopy: 1,
+                symbolTake: 1,
+                nbBonus: 0,
+                costCard: ""
+              }
+            },
+            players: {
+              p1: { id: "p1", name: "Player 1" },
+              p2: { id: "p2", name: "Player 2" }
+            }
+          }
+        }
+      }
+    ],
+    data: {
+      players: [
+        { id: "p1", name: "Player 1" },
+        { id: "p2", name: "Player 2" }
+      ],
+      logs: [
+        {
+          move_id: "move-1",
+          data: [
+            { type: "coins", args: { player_id: "p1", gap: { C: 1 } } }
+          ]
+        }
+      ]
+    }
+  };
+}
+
 test("detects active Orient captures without treating Orient as unsupported", () => {
   const flags = activeExpansionFlags(orientCapture());
   assert.deepEqual(flags.map((entry) => entry.label), ["Orient"]);
@@ -110,10 +166,21 @@ test("normalizes base and Orient market slots into Gem Table v2 fixture shape", 
   assert.equal(orientCard.slot.area, MARKET_AREA_IDS.ORIENT);
   assert.equal(orientCard.slot.slot_id, "orient:t1:s0");
   assert.equal(orientCard.slot.legacy_args, null);
+  assert.equal(orientCard.color, "wild");
   assert.equal(orientCard.ability.code, "copy_bonus");
   assert.equal(orientCard.ability.support_status, "gemtable_supported");
   assert.equal(orientCard.ability.unsupported_reason, null);
   assert.deepEqual(orientCard.ability.effects.map((effect) => effect.effect), ["copy_bonus"]);
+});
+
+test("converts tier 2 Orient wildcard ability cards without gold color", () => {
+  const replay = convertBgaCaptureToGemTableReplay(orientReplayCaptureWithTier2Wild());
+  const card = replay.gamedatas.orient_market[2][0];
+  assert.equal(card.bga_id, "220");
+  assert.equal(card.id, "orient-220");
+  assert.equal(card.color, "wild");
+  assert.equal(card.printed_color, null);
+  assert.deepEqual(card.abilities.map((ability) => ability.effect), ["copy_bonus", "take_level_free"]);
 });
 
 test("derives slot identity from explicit area or BGA-style location", () => {
