@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const { readFile, writeFile, mkdir } = fs.promises;
 
 const RAW_SCHEMA = "zephyrlabs-bga-replay-crawler-v1";
 const GEMTABLE_SCHEMA = "zephyrlabs-gemtable-bga-v1";
@@ -303,7 +305,7 @@ function extractBgaInitialGamedatas(payload) {
   return null;
 }
 
-function expansionLabelFor(value) {
+export function expansionLabelFor(value) {
   const text = String(value || "");
   const patterns = [
     { label: "Silk Road", re: /silk[_\-\s]?road|silkroad/i },
@@ -317,14 +319,14 @@ function expansionLabelFor(value) {
   return match ? match.label : "";
 }
 
-function isActiveExpansionValue(value) {
+export function isActiveExpansionValue(value) {
   if (value === true) return true;
   if (typeof value === "number") return value === 1;
   if (typeof value === "string") return /^(true|1|yes|on|enabled|active)$/i.test(value.trim());
   return false;
 }
 
-function activeExpansionFlags(payload) {
+export function activeExpansionFlags(payload) {
   const active = [];
   function push(entry) {
     if (!active.some((item) => item.path === entry.path && item.label === entry.label)) active.push(entry);
