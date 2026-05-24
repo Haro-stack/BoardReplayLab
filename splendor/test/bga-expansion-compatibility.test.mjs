@@ -4,7 +4,8 @@ import {
   activeExpansionFlags,
   convertBgaCaptureToGemTableReplay,
   expansionLabelFor,
-  isActiveExpansionValue
+  isActiveExpansionValue,
+  isInactiveExpansionValue
 } from "../scripts/convert-splendor-capture.mjs";
 
 const assert = assertModule.strict;
@@ -161,6 +162,84 @@ function repeatedStrongholdDestinationCapture() {
   return capture;
 }
 
+function disabledStrongholdsPlaceholderCapture() {
+  return {
+    schema: "zephyrlabs-bga-replay-crawler-v1",
+    table_id: "fixture-disabled-stronghold-placeholders",
+    snapshots: [
+      {
+        gameui: {
+          gamedatas: {
+            expansion_strongholds: "2",
+            players: {
+              p1: { id: "p1", name: "Alice" },
+              p2: { id: "p2", name: "Bob" }
+            },
+            market: {
+              pool: { C: 4, S: 4, E: 4, R: 4, O: 4, G: 5 },
+              row_1: {
+                count: 35,
+                cards: {
+                  0: { id: "32", type: "32", type_arg: "0", location: "market_1", location_arg: 0 }
+                }
+              },
+              row_2: { count: 0, cards: {} },
+              row_3: { count: 0, cards: {} },
+              nobles: {},
+              strongholds: {
+                p1: {
+                  1: { id: "1", type: "p1", type_arg: "1", location: "draw", location_arg: "0" }
+                },
+                p2: {
+                  2: { id: "2", type: "p2", type_arg: "1", location: "draw", location_arg: "0" }
+                }
+              }
+            },
+            carddb: {
+              32: { lvl: 1, type: 0, points: 0, cost: "SSS" },
+              33: { lvl: 1, type: 1, points: 0, cost: "EEE" }
+            },
+            nobledb: {}
+          }
+        }
+      }
+    ],
+    responses: [
+      {
+        parsed_json: {
+          data: {
+            players: [
+              { id: "p1", name: "Alice" },
+              { id: "p2", name: "Bob" }
+            ],
+            logs: [
+              {
+                move_id: "1",
+                data: [
+                  {
+                    type: "buyCard",
+                    args: {
+                      player_id: "p1",
+                      player_name: "Alice",
+                      card: { id: "32", type: "32", location: "market_1", location_arg: 0 }
+                    }
+                  },
+                  {
+                    type: "revealCard",
+                    args: {
+                      card: { id: "33", type: "33", location: "market_1", location_arg: 0 }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  };
+}
+
 function orientFreeCardCapture() {
   return {
     schema: "zephyrlabs-bga-replay-crawler-v1",
@@ -267,9 +346,16 @@ test("recognizes known Splendor expansion labels from BGA-like keys", () => {
 test("treats only explicit enabled values as active expansion flags", () => {
   [true, 1, "true", "1", "yes", "on", "enabled", "active"].forEach((value) => {
     assert.equal(isActiveExpansionValue(value), true, `${String(value)} should be active`);
+    assert.equal(isInactiveExpansionValue(value), false, `${String(value)} should not be inactive`);
   });
   [false, 0, "0", "2", "false", "off", "disabled", "", null, undefined].forEach((value) => {
     assert.equal(isActiveExpansionValue(value), false, `${String(value)} should be inactive`);
+  });
+  [false, 0, 2, "0", "2", "false", "no", "off", "disabled", "inactive", "", null].forEach((value) => {
+    assert.equal(isInactiveExpansionValue(value), true, `${String(value)} should be explicitly inactive`);
+  });
+  [undefined, "maybe", {}, []].forEach((value) => {
+    assert.equal(isInactiveExpansionValue(value), false, `${String(value)} should not be explicitly inactive`);
   });
 });
 
@@ -432,6 +518,16 @@ test("converter counts repeated Strongholds placements on the same destination",
   assert.equal(repeated.tokens["3"].slot_id, "base:t1:s0");
   assert.equal(replay.moves[1].args.stronghold_effects[0].type, "place");
   assert.equal(replay.moves[1].args.stronghold_effects[0].token_id, "3");
+});
+
+test("converter keeps base ruleset when disabled Strongholds leaves placeholder tokens", () => {
+  const replay = convertBgaCaptureToGemTableReplay(disabledStrongholdsPlaceholderCapture());
+  assert.equal(replay.gamedatas.ruleset.id, "splendor-base");
+  assert.equal(replay.gamedatas.ruleset.modules.strongholds, false);
+  assert.equal(replay.gamedatas.module_state.strongholds.enabled, false);
+  assert.equal(replay.compatibility.base_game_only, true);
+  assert.equal(replay.compatibility.strongholds_supported, false);
+  assert.equal(replay.moves[0].type, "buyMarket");
 });
 
 test("converter records Orient free card acquisitions and matched refills", () => {
