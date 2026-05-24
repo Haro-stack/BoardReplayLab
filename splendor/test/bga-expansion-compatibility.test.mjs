@@ -162,6 +162,34 @@ function repeatedStrongholdDestinationCapture() {
   return capture;
 }
 
+function multiMoveTurnCapture() {
+  const capture = strongholdsCapture();
+  capture.table_id = "fixture-multi-move-turn";
+  capture.responses[0].parsed_json.data.logs = [
+    {
+      move_id: "1",
+      data: [{ type: "coins", args: { player_id: "p1", player_name: "Alice", gap: { C: 1 } } }]
+    },
+    {
+      move_id: "2",
+      data: [{ type: "coins", args: { player_id: "p1", player_name: "Alice", gap: { S: 1 } } }]
+    },
+    {
+      move_id: "3",
+      data: [{ type: "coins", args: { player_id: "p2", player_name: "Bob", gap: { E: 1 } } }]
+    },
+    {
+      move_id: "4",
+      data: [{ type: "coins", args: { player_id: "p2", player_name: "Bob", gap: { R: 1 } } }]
+    },
+    {
+      move_id: "5",
+      data: [{ type: "coins", args: { player_id: "p1", player_name: "Alice", gap: { O: 1 } } }]
+    }
+  ];
+  return capture;
+}
+
 function disabledStrongholdsPlaceholderCapture() {
   return {
     schema: "zephyrlabs-bga-replay-crawler-v1",
@@ -518,6 +546,16 @@ test("converter counts repeated Strongholds placements on the same destination",
   assert.equal(repeated.tokens["3"].slot_id, "base:t1:s0");
   assert.equal(replay.moves[1].args.stronghold_effects[0].type, "place");
   assert.equal(replay.moves[1].args.stronghold_effects[0].token_id, "3");
+});
+
+test("converter advances replay rounds only when player order wraps", () => {
+  const replay = convertBgaCaptureToGemTableReplay(multiMoveTurnCapture());
+  const rounds = replay.moves.map((move) => move.state_after.source_state.round);
+  const currents = replay.moves.map((move) => move.state_after.source_state.current);
+  assert.deepEqual(rounds, [1, 1, 1, 1, 2]);
+  assert.deepEqual(currents, [0, 0, 1, 1, 0]);
+  assert.equal(replay.moves[4].state_after.table.round, 2);
+  assert.equal(replay.moves[4].state_after.table.current_player_id, "p1");
 });
 
 test("converter keeps base ruleset when disabled Strongholds leaves placeholder tokens", () => {

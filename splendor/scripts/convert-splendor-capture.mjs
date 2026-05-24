@@ -1318,6 +1318,25 @@ function createGameFromBgaPlayers(tableId, bgaPlayers, options = {}) {
   return game;
 }
 
+function createBgaReplayTurnTracker(game) {
+  return {
+    round: Math.max(1, Number(game && game.round) || 1),
+    lastPlayerIndex: null
+  };
+}
+
+function syncBgaReplayTurnProgress(game, player, tracker) {
+  if (!game || !player || !tracker) return;
+  const playerIndex = game.players.indexOf(player);
+  if (playerIndex < 0) return;
+  if (tracker.lastPlayerIndex !== null && playerIndex !== tracker.lastPlayerIndex && playerIndex < tracker.lastPlayerIndex) {
+    tracker.round += 1;
+  }
+  tracker.lastPlayerIndex = playerIndex;
+  game.current = playerIndex;
+  game.round = tracker.round;
+}
+
 function applyBgaMoveGroup(game, group, playerLookup, gamedatas) {
   const items = group.items || [];
   const publicReserve = items.find((entry) => entry.type === "reserveCard" && (entry.log || entry.args && entry.args.player_name));
@@ -1478,11 +1497,13 @@ export function convertBgaCaptureToGemTableReplay(payload) {
   });
   applyBgaInitialGamedatas(game, initialBgaGamedatas);
   game.initial_gamedatas = toGamedatas(game, true);
+  const turnTracker = createBgaReplayTurnTracker(game);
 
   groupBgaPacketsByMove(data.logs).forEach((group) => {
     const converted = applyBgaMoveGroup(game, group, playerLookup, initialBgaGamedatas);
     if (!converted) return;
     const actor = converted.player;
+    syncBgaReplayTurnProgress(game, actor, turnTracker);
     const move = {
       move_id: game.next_move_id,
       type: converted.type,
