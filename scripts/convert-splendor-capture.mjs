@@ -3,6 +3,8 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
+import { activeExpansionUnsupportedReason } from "../lib/gemtable-expansion-schema.mjs";
+
 const { readFile, writeFile, mkdir } = fs.promises;
 
 const RAW_SCHEMA = "zephyrlabs-bga-replay-crawler-v1";
@@ -350,6 +352,29 @@ export function activeExpansionFlags(payload) {
   }
   walk(payload, "");
   return active;
+}
+
+export function activeExpansionUnsupportedReasons(payload) {
+  const reasons = [];
+  function push(flag) {
+    const reason = activeExpansionUnsupportedReason(flag);
+    if (!reasons.some((entry) => entry.code === reason.code && entry.label === reason.label && entry.path === reason.path)) {
+      reasons.push(reason);
+    }
+  }
+  activeExpansionFlags(payload).forEach(push);
+  const reported = payload && payload.compatibility && payload.compatibility.expansion_detection &&
+    Array.isArray(payload.compatibility.expansion_detection.active)
+    ? payload.compatibility.expansion_detection.active
+    : [];
+  reported.forEach((entry) => {
+    push({
+      label: entry && entry.label || "Expansion",
+      path: entry && entry.path || "unknown path",
+      value: entry && entry.value
+    });
+  });
+  return reasons;
 }
 
 function bgaGemColor(code) {
@@ -793,13 +818,9 @@ function applyBgaMoveGroup(game, group, playerLookup, gamedatas) {
 }
 
 export function convertBgaCaptureToGemTableReplay(payload) {
-  const activeFlags = activeExpansionFlags(payload);
-  if (activeFlags.length) {
-    const details = activeFlags.map((entry) => `${entry.label} at ${entry.path}`).join("; ");
-    throw new Error(`Active expansion flag detected: ${details}`);
-  }
-  if (payload && payload.compatibility && payload.compatibility.expansion_detection && Array.isArray(payload.compatibility.expansion_detection.active) && payload.compatibility.expansion_detection.active.length) {
-    const details = payload.compatibility.expansion_detection.active.map((entry) => `${entry.label || "Expansion"} at ${entry.path || "unknown path"}`).join("; ");
+  const activeReasons = activeExpansionUnsupportedReasons(payload);
+  if (activeReasons.length) {
+    const details = activeReasons.map((entry) => `${entry.label || "Expansion"} at ${entry.path || "unknown path"}`).join("; ");
     throw new Error(`Active expansion flag detected: ${details}`);
   }
   const data = extractBgaReplayData(payload);
