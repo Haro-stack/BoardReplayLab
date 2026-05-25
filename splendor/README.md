@@ -70,6 +70,28 @@ $env:BGA_WRITE_COOKIE_FILE=".bga-cookie-header"
 node splendor/scripts/bga-splendor-replay-crawler.mjs --table 854928957 --headless
 ```
 
+For unattended workers, provide multiple accounts through `BGA_ACCOUNT_POOL`.
+The crawler tries the normal `BGA_USERNAME` / `BGA_PASSWORD` account first when
+present, then each account from the pool. If BGA reports that the replay quota
+was reached for one account, the crawler closes that browser context and retries
+the same table with the next configured account. Credential-based attempts use
+separate browser profiles per username so cookies from one account do not leak
+into another account's quota state.
+
+```bash
+BGA_ACCOUNT_POOL='account1=password1;account2=password2' \
+node splendor/scripts/bga-splendor-replay-crawler.mjs --table 854928957 --headless
+```
+
+`BGA_ACCOUNT_POOL` can also be JSON, for example:
+
+```json
+[
+  { "username": "account1", "password": "password1" },
+  { "username": "account2", "password": "password2" }
+]
+```
+
 Then reuse the captured cookie:
 
 ```powershell
@@ -78,6 +100,18 @@ node splendor/scripts/bga-splendor-replay-crawler.mjs --table 854928957 --headle
 ```
 
 Do not commit cookies, credentials, `.env` files, or raw private replay captures.
+
+Known BGA access issues:
+
+- `BGA replay quota reached for this account`: configure another account in
+  `BGA_ACCOUNT_POOL`, or wait for BGA's replay quota to reset.
+- `registered for more than 24 hours and must have played at least 2 games`:
+  the account is too new or not eligible for replay access yet.
+- `Premium access or additional account eligibility may be required`: BGA did
+  not allow that account to view the replay; use an eligible account or inspect
+  the replay manually.
+- `did not expose gameui.gamedatas`: the page loaded but did not expose the
+  Splendor replay state before the timeout; retry later or increase `--wait-ms`.
 
 ## Convert Gem Table and DinoBoard
 

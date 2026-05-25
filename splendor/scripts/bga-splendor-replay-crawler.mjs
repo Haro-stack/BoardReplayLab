@@ -16,6 +16,7 @@ function usage() {
     "  - Log in on BGA in that browser if prompted.",
     "  - Optional server-side cookie auth: BGA_COOKIE or BGA_COOKIE_FILE.",
     "  - Optional server-side env login: BGA_USERNAME and BGA_PASSWORD.",
+    "  - Optional server-side account pool: BGA_ACCOUNT_POOL as user=pass entries separated by semicolon, comma, or newline.",
     "  - Optional local cookie capture: BGA_WRITE_COOKIE_FILE.",
     "  - Your BGA password is never sent to zephyrlabs.cloud or this repo.",
     "  - Output is browser-visible BGA replay data with base-game compatibility metadata."
@@ -57,6 +58,42 @@ function readBgaCredentials() {
   };
 }
 
+function parseBgaAccountPool(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return [];
+  if (text.startsWith("[") || text.startsWith("{")) {
+    const parsed = JSON.parse(text);
+    const rows = Array.isArray(parsed) ? parsed : parsed.accounts;
+    if (!Array.isArray(rows)) throw new Error("BGA_ACCOUNT_POOL JSON must be an array or an object with an accounts array.");
+    return rows.map((row) => ({
+      username: String(row.username || row.user || row.login || "").trim(),
+      password: String(row.password || row.pass || "").trim()
+    })).filter(hasBgaCredentials);
+  }
+  return text
+    .split(/[\n;,]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const splitAt = entry.includes("=") ? entry.indexOf("=") : entry.indexOf(":");
+      if (splitAt <= 0) return null;
+      return {
+        username: entry.slice(0, splitAt).trim(),
+        password: entry.slice(splitAt + 1).trim()
+      };
+    })
+    .filter(hasBgaCredentials);
+}
+
+function readBgaCredentialPool() {
+  const pool = parseBgaAccountPool(process.env.BGA_ACCOUNT_POOL || process.env.BGA_ACCOUNTS || process.env.BGA_CREDENTIALS || "");
+  const single = readBgaCredentials();
+  if (hasBgaCredentials(single) && !pool.some((entry) => entry.username === single.username)) {
+    pool.unshift(single);
+  }
+  return pool;
+}
+
 async function readBgaCookieHeader() {
   var direct = process.env.BGA_COOKIE || process.env.BGA_COOKIE_HEADER || "";
   if (direct.trim()) return direct.trim();
@@ -71,6 +108,26 @@ async function readBgaCookieHeader() {
 
 function hasBgaCredentials(credentials) {
   return !!(credentials && credentials.username && credentials.password);
+}
+
+function isBgaReplayQuotaError(error) {
+  return /BGA replay quota reached|replay quota|replay.*limit|limit.*replay/i.test(error && error.message ? error.message : String(error || ""));
+}
+
+function accountLabel(credentials) {
+  return credentials && credentials.username ? credentials.username : "browser profile";
+}
+
+function safeProfileSegment(value) {
+  return String(value || "account")
+    .replace(/[^a-z0-9_.-]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "account";
+}
+
+function profileDirForAttempt(baseProfileDir, credentials, attemptIndex, attemptCount) {
+  if (!hasBgaCredentials(credentials)) return baseProfileDir;
+  return path.join(baseProfileDir, safeProfileSegment(credentials.username || `account-${attemptIndex + 1}`));
 }
 
 function parseCookieHeader(cookieHeader) {
@@ -307,12 +364,42 @@ async function assertNotLoginOrLobby(page) {
   }
 }
 
+async function clearPenaltyIfPresent(page, targetUrl, maxClicks = 10) {
+  for (let index = 0; index < maxClicks; index += 1) {
+    const current = await page.evaluate(() => ({
+      url: location.href,
+      body: document.body ? document.body.innerText.slice(0, 2000) : ""
+    })).catch(() => ({ url: page.url(), body: "" }));
+    if (!/\/penalty/i.test(current.url) && !/未能完成某一场游戏|未能完成某一場遊戲|penalty/i.test(current.body)) {
+      return index;
+    }
+    const clicked = await page.evaluate(() => {
+      const link = document.querySelector("a.exit_penalty");
+      if (!link) return false;
+      link.click();
+      return true;
+    }).catch(() => false);
+    if (!clicked) {
+      throw new Error(`BGA penalty page blocked replay access and no continue button was found. Current URL: ${current.url}`);
+    }
+    await page.waitForTimeout(1800);
+    if (targetUrl) {
+      await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
+      await page.waitForTimeout(1800);
+    }
+  }
+  throw new Error("BGA penalty page kept reappearing after 10 continue clicks.");
+}
+
 async function assertBgaReplayAccessible(page) {
   const current = await page.evaluate(() => ({
     title: document.title,
     body: document.body ? document.body.innerText.slice(0, 4000) : ""
   }));
   const text = `${current.title}\n${current.body}`;
+  if (/reached\s+(the\s+)?limit.*replay|replay.*limit|你已经达到上限（replay）|你已經達到上限（replay）|达到上限.*replay|達到上限.*replay/i.test(text)) {
+    throw new Error("BGA replay quota reached for this account. Wait for the replay quota to reset or use an account with replay access.");
+  }
   if (/registered more than 24 hours and have played at least 2 games/i.test(text)) {
     throw new Error("BGA blocked replay access for this account: the account must be registered for more than 24 hours and must have played at least 2 games.");
   }
@@ -589,22 +676,9 @@ function detectCompatibility(payload) {
   };
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  if (!args.table) {
-    console.error(usage());
-    process.exit(1);
-  }
-
+async function crawlWithCredential({ args, chromium, outputDir, profileDir, cookieHeader, credentials, attemptIndex, attemptCount }) {
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const repoRoot = path.resolve(scriptDir, "..");
-  const chromium = await loadChromium(repoRoot);
-  const credentials = readBgaCredentials();
-  const cookieHeader = await readBgaCookieHeader();
-  const outputDir = path.resolve(process.cwd(), args.out);
-  const profileDir = path.resolve(process.cwd(), args.profile);
-  await mkdir(outputDir, { recursive: true });
-
   const responses = [];
   const launchOptions = {
     headless: args.headless,
@@ -613,9 +687,15 @@ async function main() {
   if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE) {
     launchOptions.executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
   }
-  const context = await chromium.launchPersistentContext(profileDir, launchOptions);
+  const attemptProfileDir = profileDirForAttempt(profileDir, credentials, attemptIndex, attemptCount);
+  if (attemptCount > 1) {
+    console.log(`Using BGA account ${attemptIndex + 1}/${attemptCount}: ${accountLabel(credentials)}`);
+  }
+  let context = null;
+  try {
+  context = await chromium.launchPersistentContext(attemptProfileDir, launchOptions);
   const page = context.pages()[0] || await context.newPage();
-  if (cookieHeader) {
+  if (cookieHeader && !hasBgaCredentials(credentials)) {
     await applyBgaCookieHeader(context, cookieHeader);
   }
 
@@ -645,15 +725,18 @@ async function main() {
   console.log("If BGA asks you to log in, complete login in the opened browser window.");
   console.log("When the replay page is visible, the crawler will continue automatically.");
   await page.waitForTimeout(1800);
+  await clearPenaltyIfPresent(page, reviewUrl);
   if (await loginRequired(page)) {
     if (hasBgaCredentials(credentials)) {
       const loggedIn = await loginWithBgaCredentials(page, credentials, reviewUrl);
       if (!loggedIn) {
         throw new Error("BGA automatic login did not complete. The account may need verification, captcha, or manual login in the crawler profile.");
       }
+      await clearPenaltyIfPresent(page, reviewUrl);
       await maybeWriteCookieHeader(context);
     }
   }
+  await clearPenaltyIfPresent(page, reviewUrl);
   await assertNotLoginOrLobby(page);
   await maybeWriteCookieHeader(context);
   await assertBgaReplayAccessible(page);
@@ -666,6 +749,7 @@ async function main() {
     console.log(`Opening archive replay ${archiveReplayUrl}`);
     await page.goto(archiveReplayUrl, { waitUntil: "domcontentloaded", timeout: 90000 });
     await page.waitForTimeout(1800);
+    await clearPenaltyIfPresent(page, archiveReplayUrl);
     await assertNotLoginOrLobby(page);
     await assertBgaReplayAccessible(page);
   }
@@ -717,7 +801,50 @@ async function main() {
   await writeFile(outputPath, JSON.stringify(payload), "utf8");
   console.log(`Saved ${outputPath}`);
   console.log(`Repo script: ${path.relative(repoRoot, fileURLToPath(import.meta.url)).replace(/\\/g, "/")}`);
-  await context.close();
+  return outputPath;
+  } finally {
+    if (context) await context.close().catch(() => {});
+  }
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (!args.table) {
+    console.error(usage());
+    process.exit(1);
+  }
+
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  const repoRoot = path.resolve(scriptDir, "..");
+  const chromium = await loadChromium(repoRoot);
+  const credentialPool = readBgaCredentialPool();
+  const attempts = credentialPool.length ? credentialPool : [readBgaCredentials()];
+  const cookieHeader = await readBgaCookieHeader();
+  const outputDir = path.resolve(process.cwd(), args.out);
+  const profileDir = path.resolve(process.cwd(), args.profile);
+  await mkdir(outputDir, { recursive: true });
+
+  let lastQuotaError = null;
+  for (let attemptIndex = 0; attemptIndex < attempts.length; attemptIndex += 1) {
+    const credentials = attempts[attemptIndex];
+    try {
+      return await crawlWithCredential({
+        args,
+        chromium,
+        outputDir,
+        profileDir,
+        cookieHeader,
+        credentials,
+        attemptIndex,
+        attemptCount: attempts.length
+      });
+    } catch (error) {
+      if (!isBgaReplayQuotaError(error) || attemptIndex >= attempts.length - 1) throw error;
+      lastQuotaError = error;
+      console.warn(`BGA replay quota reached for ${accountLabel(credentials)}; retrying table ${args.table} with the next configured account.`);
+    }
+  }
+  throw lastQuotaError || new Error("BGA crawler did not run any account attempts.");
 }
 
 main().catch((error) => {
