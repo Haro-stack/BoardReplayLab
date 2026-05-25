@@ -3,10 +3,6 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import { chromium } from "playwright-extra";
-import StealthPlugin from "puppeteer-extra-plugin-stealth";
-
-chromium.use(StealthPlugin());
 
 const SCHEMA = "zephyrlabs-bga-replay-crawler-v1";
 
@@ -342,6 +338,28 @@ function safeJsonClone(value, maxDepth = 8) {
     return out;
   }
   return walk(value, 0);
+}
+
+async function loadChromium(repoRoot) {
+  try {
+    const mod = await import("playwright");
+    return mod.chromium;
+  } catch (firstError) {
+    const candidates = [
+      process.env.PLAYWRIGHT_NODE_MODULES,
+      path.join(repoRoot, "node_modules"),
+      path.join(repoRoot, "server", "node_modules")
+    ].filter(Boolean);
+    for (const nodeModules of candidates) {
+      try {
+        const requireFrom = createRequire(path.join(nodeModules, "package.json"));
+        return requireFrom("playwright").chromium;
+      } catch {
+        // Try the next dependency location.
+      }
+    }
+    throw firstError;
+  }
 }
 
 async function collectSnapshot(page) {
@@ -762,15 +780,7 @@ async function crawlWithCredential({ args, chromium, outputDir, profileDir, cook
   const responses = [];
   const launchOptions = {
     headless: args.headless,
-
-    args: [
-      "--disable-blink-features=AutomationControlled",
-      "--disable-dev-shm-usage",
-      "--disable-web-security",
-      "--disable-features=IsolateOrigins,site-per-process",
-      "--no-sandbox",
-      "--disable-setuid-sandbox"
-    ]
+    viewport: { width: 1440, height: 1000 }
   };
   const proxy = readBgaProxyConfig({
     table: args.table,
@@ -790,69 +800,8 @@ async function crawlWithCredential({ args, chromium, outputDir, profileDir, cook
   }
   let context = null;
   try {
-  context = await chromium.launchPersistentContext(
-    attemptProfileDir,
-    {
-      ...launchOptions,
-
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-
-      viewport: {
-        width: 1920,
-        height: 1080
-      },
-
-      locale: "zh-CN",
-
-      timezoneId: "Asia/Tokyo",
-
-      colorScheme: "dark",
-
-      extraHTTPHeaders: {
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"
-      }
-    }
-  );
+  context = await chromium.launchPersistentContext(attemptProfileDir, launchOptions);
   const page = context.pages()[0] || await context.newPage();
-  await page.addInitScript(() => {
-
-    Object.defineProperty(navigator, "webdriver", {
-      get: () => false
-    });
-
-    Object.defineProperty(navigator, "platform", {
-      get: () => "Win32"
-    });
-
-    Object.defineProperty(navigator, "language", {
-      get: () => "zh-CN"
-    });
-
-    Object.defineProperty(navigator, "languages", {
-      get: () => ["zh-CN", "zh", "en"]
-    });
-
-    Object.defineProperty(navigator, "hardwareConcurrency", {
-      get: () => 8
-    });
-
-    Object.defineProperty(navigator, "deviceMemory", {
-      get: () => 8
-    });
-
-    window.chrome = {
-      runtime: {}
-    };
-
-    const originalQuery = window.navigator.permissions.query;
-
-    window.navigator.permissions.query = (parameters) =>
-      parameters.name === "notifications"
-        ? Promise.resolve({ state: Notification.permission })
-        : originalQuery(parameters);
-
-  });
   if (cookieHeader && !hasBgaCredentials(credentials)) {
     await applyBgaCookieHeader(context, cookieHeader);
   }
@@ -974,7 +923,7 @@ async function main() {
 
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const repoRoot = path.resolve(scriptDir, "..");
-  const browserChromium = chromium;
+  const chromium = await loadChromium(repoRoot);
   const credentialPool = readBgaCredentialPool();
   const attempts = credentialPool.length ? credentialPool : [readBgaCredentials()];
   const cookieHeader = await readBgaCookieHeader();
@@ -988,7 +937,7 @@ async function main() {
     try {
       return await crawlWithCredential({
         args,
-        chromium: browserChromium,
+        chromium,
         outputDir,
         profileDir,
         cookieHeader,
