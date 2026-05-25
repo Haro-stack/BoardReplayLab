@@ -1341,6 +1341,21 @@ function syncBgaReplayTurnProgress(game, player, tracker) {
   game.round = tracker.round;
 }
 
+function applyBgaClaimNoble(game, player, claim, gamedatas, fallbackId) {
+  if (!game || !player || !claim) return null;
+  const nobleRaw = bgaRawCardTypeId(claim.args && claim.args.card, fallbackId);
+  let noble = bgaNobleFromDb(nobleRaw, gamedatas, { name: claim.args && claim.args.noble_desc || "BGA noble" });
+  const nobleIndex = game.nobles.findIndex((entry) =>
+    entry && ((entry.bga_id && entry.bga_id === noble.bga_id) || entry.id === noble.id)
+  );
+  if (nobleIndex >= 0) noble = game.nobles.splice(nobleIndex, 1)[0];
+  const alreadyClaimed = player.nobles.some((entry) =>
+    entry && ((entry.bga_id && entry.bga_id === noble.bga_id) || entry.id === noble.id)
+  );
+  if (!alreadyClaimed) player.nobles.push(noble);
+  return noble;
+}
+
 function applyBgaMoveGroup(game, group, playerLookup, gamedatas) {
   const items = group.items || [];
   const publicReserve = items.find((entry) => entry.type === "reserveCard" && (entry.log || entry.args && entry.args.player_name));
@@ -1384,12 +1399,15 @@ function applyBgaMoveGroup(game, group, playerLookup, gamedatas) {
       });
     });
     applyBgaRevealCards(game, items, gamedatas, usedRevealItems);
+    const claimedAfterBuy = applyBgaClaimNoble(game, player, claim, gamedatas, group.move_id);
     const args = {
       card_id: buyCard.id,
       card: buyCard,
       tier: buyCard.tier,
       reserved_from: buyCard.reserved_from || "market",
-      payment: { tokens: bgaCoinsFromGap(coins, -1), gold_as: emptyCounts(false) }
+      payment: { tokens: bgaCoinsFromGap(coins, -1), gold_as: emptyCounts(false) },
+      noble_id: claimedAfterBuy && claimedAfterBuy.id,
+      noble: claimedAfterBuy
     };
     if (primaryPurchase.slot) {
       args.market_id = primaryPurchase.slot.marketId;
@@ -1438,15 +1456,9 @@ function applyBgaMoveGroup(game, group, playerLookup, gamedatas) {
   }
 
   if (claim) {
-    const nobleRaw = bgaRawCardTypeId(claim.args && claim.args.card, group.move_id);
-    let noble = bgaNobleFromDb(nobleRaw, gamedatas, { name: claim.args && claim.args.noble_desc || "BGA noble" });
-    const nobleIndex = game.nobles.findIndex((entry) =>
-      entry && ((entry.bga_id && entry.bga_id === noble.bga_id) || entry.id === noble.id)
-    );
-    if (nobleIndex >= 0) noble = game.nobles.splice(nobleIndex, 1)[0];
-    player.nobles.push(noble);
+    const noble = applyBgaClaimNoble(game, player, claim, gamedatas, group.move_id);
     applyBgaRevealCards(game, items, gamedatas);
-    return { type: "chooseNoble", player, args: { noble_id: noble.name } };
+    return { type: "chooseNoble", player, args: { noble_id: noble && noble.id, noble } };
   }
 
   if (strongholdPrimary && strongholdEffects.length) {

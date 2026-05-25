@@ -268,6 +268,88 @@ function disabledStrongholdsPlaceholderCapture() {
   };
 }
 
+function bgaBuyWithClaimNobleCapture() {
+  return {
+    schema: "zephyrlabs-bga-replay-crawler-v1",
+    table_id: "fixture-buy-claim-noble",
+    snapshots: [
+      {
+        gameui: {
+          gamedatas: {
+            players: {
+              p1: { id: "p1", name: "Alice" },
+              p2: { id: "p2", name: "Bob" }
+            },
+            market: {
+              pool: { C: 4, S: 4, E: 4, R: 4, O: 4, G: 5 },
+              row_1: {
+                count: 35,
+                cards: {
+                  0: { id: "32", type: "32", type_arg: "0", location: "market_1", location_arg: 0 }
+                }
+              },
+              row_2: { count: 0, cards: {} },
+              row_3: { count: 0, cards: {} },
+              nobles: {
+                0: { id: "3", type: "3", location: "noble", location_arg: 0 }
+              }
+            },
+            carddb: {
+              32: { lvl: 1, type: 0, points: 0, cost: "SSS" },
+              33: { lvl: 1, type: 1, points: 0, cost: "EEE" }
+            },
+            nobledb: {
+              3: { name: "Mariam Uz Zamani", points: 3, cost: "CCCSSSEEE" }
+            }
+          }
+        }
+      }
+    ],
+    responses: [
+      {
+        parsed_json: {
+          data: {
+            players: [
+              { id: "p1", name: "Alice" },
+              { id: "p2", name: "Bob" }
+            ],
+            logs: [
+              {
+                move_id: "51",
+                data: [
+                  {
+                    type: "buyCard",
+                    args: {
+                      player_id: "p1",
+                      player_name: "Alice",
+                      card: { id: "32", type: "32", location: "market_1", location_arg: 0 }
+                    }
+                  },
+                  {
+                    type: "revealCard",
+                    args: {
+                      card: { id: "33", type: "33", location: "market_1", location_arg: 0 }
+                    }
+                  },
+                  {
+                    type: "claimNoble",
+                    args: {
+                      player_id: "p1",
+                      player_name: "Alice",
+                      card: { id: "3", type: "3", location: "noble", location_arg: 0 },
+                      noble_desc: "Mariam Uz Zamani"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  };
+}
+
 function orientFreeCardCapture() {
   return {
     schema: "zephyrlabs-bga-replay-crawler-v1",
@@ -566,6 +648,20 @@ test("converter keeps base ruleset when disabled Strongholds leaves placeholder 
   assert.equal(replay.compatibility.base_game_only, true);
   assert.equal(replay.compatibility.strongholds_supported, false);
   assert.equal(replay.moves[0].type, "buyMarket");
+});
+
+test("converter records BGA noble claims attached to buy moves", () => {
+  const replay = convertBgaCaptureToGemTableReplay(bgaBuyWithClaimNobleCapture());
+  const move = replay.moves[0];
+  const alice = move.state_after.players.p1;
+
+  assert.equal(move.type, "buyMarket");
+  assert.equal(move.notification.args.bga_move_id, "51");
+  assert.equal(move.args.noble_id, "bga-noble-3");
+  assert.equal(move.args.noble.name, "Mariam Uz Zamani");
+  assert.deepEqual(alice.nobles.map((noble) => noble.id), ["bga-noble-3"]);
+  assert.equal(alice.score, 3);
+  assert.deepEqual(move.state_after.nobles, []);
 });
 
 test("converter records Orient free card acquisitions and matched refills", () => {
