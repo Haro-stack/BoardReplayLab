@@ -17,6 +17,7 @@ function usage() {
     "  - Optional server-side cookie auth: BGA_COOKIE or BGA_COOKIE_FILE.",
     "  - Optional server-side env login: BGA_USERNAME and BGA_PASSWORD.",
     "  - Optional server-side account pool: BGA_ACCOUNT_POOL as user=pass entries separated by semicolon, comma, or newline.",
+    "  - Optional replay proxy: BGA_PROXY_SERVER or BGA_PROXY_URL, or BGA_PROXY_POOL for per-run proxy rotation.",
     "  - Optional local cookie capture: BGA_WRITE_COOKIE_FILE.",
     "  - Your BGA password is never sent to zephyrlabs.cloud or this repo.",
     "  - Output is browser-visible BGA replay data with base-game compatibility metadata."
@@ -116,6 +117,94 @@ function isBgaReplayQuotaError(error) {
 
 function accountLabel(credentials) {
   return credentials && credentials.username ? credentials.username : "browser profile";
+}
+
+function parseBgaProxyPool(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return [];
+  if (text.startsWith("[") || text.startsWith("{")) {
+    const parsed = JSON.parse(text);
+    const rows = Array.isArray(parsed) ? parsed : parsed.proxies;
+    if (!Array.isArray(rows)) throw new Error("BGA_PROXY_POOL JSON must be an array or an object with a proxies array.");
+    return rows.map((row) => {
+      if (typeof row === "string") return normalizeProxyConfig({ server: row });
+      return normalizeProxyConfig({
+        server: row.server || row.url || row.proxy || "",
+        username: row.username || row.user || "",
+        password: row.password || row.pass || "",
+        bypass: row.bypass || ""
+      });
+    }).filter(Boolean);
+  }
+  return text
+    .split(/[\n;,]+/)
+    .map((entry) => normalizeProxyConfig({ server: entry.trim() }))
+    .filter(Boolean);
+}
+
+function hashString(value) {
+  let hash = 2166136261;
+  const text = String(value || "");
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function selectedProxyFromPool(pool, selection = {}) {
+  if (!pool.length) return null;
+  const explicitIndex = Number(process.env.BGA_PROXY_INDEX);
+  const seed = process.env.BGA_PROXY_ROTATION_KEY
+    || `${selection.table || ""}:${selection.account || ""}:${selection.attemptIndex || 0}:${process.pid}:${Date.now()}`;
+  const index = Number.isInteger(explicitIndex) && explicitIndex >= 0
+    ? explicitIndex % pool.length
+    : hashString(seed) % pool.length;
+  return pool[index];
+}
+
+function normalizeProxyConfig(config) {
+  const rawServer = String(config && config.server || "").trim();
+  if (!rawServer) return null;
+  let server = rawServer;
+  let username = String(config && config.username || process.env.BGA_PROXY_USERNAME || process.env.BGA_PROXY_USER || "").trim();
+  let password = String(config && config.password || process.env.BGA_PROXY_PASSWORD || process.env.BGA_PROXY_PASS || "").trim();
+
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(server) ? server : `http://${server}`);
+    if (url.username && !username) username = decodeURIComponent(url.username);
+    if (url.password && !password) password = decodeURIComponent(url.password);
+    url.username = "";
+    url.password = "";
+    server = url.toString().replace(/\/$/, "");
+  } catch {
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(server)) server = `http://${server}`;
+  }
+
+  const proxy = { server };
+  if (username) proxy.username = username;
+  if (password) proxy.password = password;
+  const bypass = String(config && config.bypass || process.env.BGA_PROXY_BYPASS || "").trim();
+  if (bypass) proxy.bypass = bypass;
+  return proxy;
+}
+
+function readBgaProxyConfig(selection = {}) {
+  const pool = parseBgaProxyPool(process.env.BGA_PROXY_POOL || process.env.BGA_PROXIES || "");
+  if (pool.length) return selectedProxyFromPool(pool, selection);
+  return normalizeProxyConfig({
+    server: process.env.BGA_PROXY_SERVER || process.env.BGA_PROXY_URL || process.env.BGA_REPLAY_PROXY || ""
+  });
+}
+
+function proxyLabel(proxy) {
+  if (!(proxy && proxy.server)) return "";
+  try {
+    const url = new URL(proxy.server);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return String(proxy.server).replace(/\/\/[^:@/]+:[^@/]+@/, "//***:***@");
+  }
 }
 
 function safeProfileSegment(value) {
@@ -397,7 +486,7 @@ async function assertBgaReplayAccessible(page) {
     body: document.body ? document.body.innerText.slice(0, 4000) : ""
   }));
   const text = `${current.title}\n${current.body}`;
-  if (/reached\s+(the\s+)?limit.*replay|replay.*limit|你已经达到上限（replay）|你已經達到上限（replay）|达到上限.*replay|達到上限.*replay/i.test(text)) {
+  if (/reached\s+((a|the)\s+)?limit.*replay|replay.*limit|你已经达到上限（replay）|你已經達到上限（replay）|达到上限.*replay|達到上限.*replay/i.test(text)) {
     throw new Error("BGA replay quota reached for this account. Wait for the replay quota to reset or use an account with replay access.");
   }
   if (/registered more than 24 hours and have played at least 2 games/i.test(text)) {
@@ -684,6 +773,15 @@ async function crawlWithCredential({ args, chromium, outputDir, profileDir, cook
     headless: args.headless,
     viewport: { width: 1440, height: 1000 }
   };
+  const proxy = readBgaProxyConfig({
+    table: args.table,
+    account: accountLabel(credentials),
+    attemptIndex
+  });
+  if (proxy) {
+    launchOptions.proxy = proxy;
+    console.log(`Using BGA proxy ${proxyLabel(proxy)}`);
+  }
   if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE) {
     launchOptions.executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
   }

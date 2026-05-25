@@ -101,6 +101,37 @@ node splendor/scripts/bga-splendor-replay-crawler.mjs --table 854928957 --headle
 
 Do not commit cookies, credentials, `.env` files, or raw private replay captures.
 
+For proxy-backed workers, set either a single proxy or a pool:
+
+```bash
+BGA_PROXY_SERVER='http://proxy-user:proxy-pass@proxy.example:8080' \
+node splendor/scripts/bga-splendor-replay-crawler.mjs --table 854928957 --headless
+```
+
+```bash
+BGA_PROXY_POOL='http://proxy-user:proxy-pass@proxy-a.example:8080;http://proxy-user:proxy-pass@proxy-b.example:8080' \
+node splendor/scripts/bga-splendor-replay-crawler.mjs --table 854928957 --headless
+```
+
+`BGA_PROXY_POOL` can also be JSON:
+
+```json
+[
+  { "server": "http://proxy-a.example:8080", "username": "proxy-user", "password": "proxy-pass" },
+  { "server": "http://proxy-b.example:8080", "username": "proxy-user", "password": "proxy-pass" }
+]
+```
+
+For Webshare's rotating endpoint, use the dashboard-provided username and
+password with `p.webshare.io`, for example:
+
+```bash
+BGA_PROXY_SERVER='http://webshare-user-rotate:webshare-pass@p.webshare.io:80'
+```
+
+Do not use public anonymous proxy lists for authenticated BGA crawling; the
+crawler sends login cookies and credentials through the configured proxy.
+
 Known BGA access issues:
 
 - `BGA replay quota reached for this account`: configure another account in
