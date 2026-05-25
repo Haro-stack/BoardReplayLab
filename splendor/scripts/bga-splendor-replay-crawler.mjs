@@ -17,7 +17,7 @@ function usage() {
     "  - Optional server-side cookie auth: BGA_COOKIE or BGA_COOKIE_FILE.",
     "  - Optional server-side env login: BGA_USERNAME and BGA_PASSWORD.",
     "  - Optional server-side account pool: BGA_ACCOUNT_POOL as user=pass entries separated by semicolon, comma, or newline.",
-    "  - Optional replay proxy: BGA_PROXY_SERVER or BGA_PROXY_URL, or BGA_PROXY_POOL for per-run proxy rotation.",
+    "  - Optional replay proxy: BGA_PROXY_SERVER or BGA_PROXY_URL, or BGA_PROXY_POOL for stable account-bound selection.",
     "  - Optional local cookie capture: BGA_WRITE_COOKIE_FILE.",
     "  - Your BGA password is never sent to zephyrlabs.cloud or this repo.",
     "  - Output is browser-visible BGA replay data with base-game compatibility metadata."
@@ -155,12 +155,21 @@ function hashString(value) {
 function selectedProxyFromPool(pool, selection = {}) {
   if (!pool.length) return null;
   const explicitIndex = Number(process.env.BGA_PROXY_INDEX);
-  const seed = process.env.BGA_PROXY_ROTATION_KEY
-    || `${selection.table || ""}:${selection.account || ""}:${selection.attemptIndex || 0}:${process.pid}:${Date.now()}`;
+  const mode = String(process.env.BGA_PROXY_ROTATION_MODE || process.env.BGA_PROXY_SELECTION_MODE || "account").trim().toLowerCase();
+  const seed = process.env.BGA_PROXY_ROTATION_KEY || proxySelectionSeed(mode, selection);
   const index = Number.isInteger(explicitIndex) && explicitIndex >= 0
     ? explicitIndex % pool.length
     : hashString(seed) % pool.length;
   return pool[index];
+}
+
+function proxySelectionSeed(mode, selection = {}) {
+  if (mode === "table") return `table:${selection.table || ""}`;
+  if (mode === "attempt") return `attempt:${selection.account || ""}:${selection.attemptIndex || 0}`;
+  if (mode === "rotate" || mode === "random") {
+    return `rotate:${selection.table || ""}:${selection.account || ""}:${selection.attemptIndex || 0}:${process.pid}:${Date.now()}`;
+  }
+  return `account:${selection.account || "default"}`;
 }
 
 function normalizeProxyConfig(config) {

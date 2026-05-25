@@ -122,6 +122,14 @@ node splendor/scripts/bga-splendor-replay-crawler.mjs --table 854928957 --headle
 ]
 ```
 
+When a proxy pool is configured, the default selection mode is stable by BGA
+account: the same account maps to the same proxy across tables and retries.
+This is safer for long-running workers than changing network identity on every
+replay request. Set `BGA_PROXY_ROTATION_MODE=table` to bind proxies by table,
+`BGA_PROXY_ROTATION_MODE=attempt` to bind by account attempt, or
+`BGA_PROXY_ROTATION_MODE=rotate` for the older per-run rotation behavior. Set
+`BGA_PROXY_INDEX` when you need to force one proxy for a controlled test.
+
 For Webshare's rotating endpoint, use the dashboard-provided username and
 password with `p.webshare.io`, for example:
 
